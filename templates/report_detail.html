@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}{{ report.subject }}{% endblock %}
+{% block breadcrumb %}تفاصيل التقرير{% endblock %}
+{% block content %}
+<div class="report-action-bar screen-only"><a href="/reports" class="back-link">→ جميع التقارير</a><div class="button-group"><a class="btn btn-outline" href="/reports/{{ report.id }}/edit">✎ تعديل</a><button class="btn btn-primary" type="button" onclick="window.print()">▤ طباعة / حفظ PDF</button><form method="post" action="/reports/{{ report.id }}/delete" onsubmit="return confirm('هل تريد حذف هذا التقرير نهائياً؟')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="btn btn-danger" type="submit">حذف</button></form></div></div>
+{% if saved %}<div class="alert alert-success screen-only">تم حفظ التقرير بنجاح.</div>{% endif %}
+<article class="paper-report">
+ <header class="paper-header"><div class="paper-brand"><span class="paper-logo">ن</span><div><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></div></div><div class="paper-id">رقم التقرير: {{ '%04d'|format(report.id) }}<br><small>تاريخ الطباعة: {{ today().strftime('%Y/%m/%d') }}</small></div></header>
+ <div class="paper-title"><span class="kind-pill kind-{{ report.kind }}">{{ kind_labels[report.kind] }}</span><h1>تقرير {{ 'حصة' if report.kind != 'activity' else 'نشاط' }} {{ kind_labels[report.kind] }}</h1><p>{{ report.subject }}</p></div>
+ <div class="paper-information"><div><span>تاريخ الإنجاز</span><strong>{{ report.session_date.strftime('%Y/%m/%d') }}</strong></div><div><span>الفوج / المجموعة</span><strong>{{ report.group_name }}</strong></div><div><span>المؤطر(ة)</span><strong>{{ report.trainer_name }}</strong></div><div><span>مكان الإنجاز</span><strong>{{ report.venue or '—' }}</strong></div><div><span>المدة الزمنية</span><strong>{{ report.duration_minutes }} دقيقة</strong></div><div><span>ساعة البداية</span><strong>{{ report.start_time or '—' }}</strong></div></div>
+ <div class="attendance-strip"><div><span>عدد الحاضرين</span><strong>{{ report.present_count }}</strong></div><div><span>عدد الغائبين</span><strong>{{ report.absent_count }}</strong></div><div><span>العدد الإجمالي</span><strong>{{ report.present_count + report.absent_count }}</strong></div></div>
+ {% for label, value in [('الأهداف المسطرة',report.objectives),('سير الحصة والأنشطة المنجزة',report.activities),('النتائج والمكتسبات',report.results),('الصعوبات والملاحظات',report.challenges),('التوصيات والإجراءات المقترحة',report.recommendations)] %}
+ <section class="paper-section"><h2>{{ loop.index|string|replace('1','١')|replace('2','٢')|replace('3','٣')|replace('4','٤')|replace('5','٥') }}. {{ label }}</h2><p>{{ value if value else 'لم يتم إدراج ملاحظات في هذا المحور.' }}</p></section>
+ {% endfor %}
+ <footer class="paper-footer"><div>توقيع المؤطر(ة)<span>...................................</span></div><div>توقيع الإدارة والختم<span>...................................</span></div></footer>
+ <div class="paper-bottom">جمعية نور الأمل · برنامج الفرصة الثانية – الجيل الجديد</div>
+</article>
+{% endblock %}

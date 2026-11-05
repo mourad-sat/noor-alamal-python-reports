@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}تسجيل الدخول{% endblock %}
+{% block guest %}
+<div class="auth-layout">
+  <div class="auth-information"><div class="auth-brand"><span class="brand-symbol">ن</span><span>جمعية نور الأمل</span></div>
+    <div class="auth-intro"><span class="overline">منصة التدبير والتتبع</span><h1>كل إنجاز يستحق<br><em>أن يُوثَّق.</em></h1><p>منصة موحدة لتنظيم تقارير حصص التكوين المهني والتأهيل التربوي والغياب والأنشطة الموازية.</p>
+    <div class="auth-feature"><span>✦</span> صُممت لبرنامج الفرصة الثانية – الجيل الجديد</div></div>
+    <div class="auth-decoration">NOOR · 02</div>
+  </div>
+  <div class="auth-form-area"><div class="auth-card"><div class="auth-card-icon">✦</div><h2>مرحباً بعودتك</h2><p class="muted">سجّل الدخول للوصول إلى التقارير وإدارة البيانات.</p>
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    <form action="/login" method="post" class="form-stack">
+      <label>اسم المستخدم<input name="username" autocomplete="username" required autofocus placeholder="اسم المستخدم"></label>
+      <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></label>
+      <button class="btn btn-primary wide" type="submit">تسجيل الدخول <span>←</span></button>
+    </form>
+    <div class="auth-small">مساحة خاصة بالطاقم الإداري والتربوي</div>
+  </div></div>
+</div>
+{% endblock %}

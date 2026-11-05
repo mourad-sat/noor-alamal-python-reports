@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}لوحة القيادة{% endblock %}
+{% block breadcrumb %}نظرة عامة{% endblock %}
+{% block content %}
+<div class="page-heading dashboard-heading"><div><div class="eyebrow">مساحة العمل / نظرة عامة</div><h1>لوحة القيادة <span class="wave">✦</span></h1><p>تتبّع مختلف برامج وأنشطة جمعية نور الأمل من مكان واحد.</p></div><a class="btn btn-primary" href="/reports/new">+ إنشاء تقرير جديد</a></div>
+<section class="welcome-banner"><div><span class="banner-kicker">برنامج الفرصة الثانية – الجيل الجديد</span><h2>مرحباً بك في منصة نور الأمل</h2><p>سجّل الحصص، وثّق الإنجازات، وتابع الحضور والغياب بسهولة ودقة.</p><a class="banner-link" href="/reports/new">ابدأ بإعداد تقرير <span>←</span></a></div><div class="banner-art" aria-hidden="true"><span class="orbit orbit1"></span><span class="orbit orbit2"></span><span class="art-center">ن</span><span class="spark spark1">✧</span><span class="spark spark2">✦</span></div></section>
+<div class="section-caption"><h2>المؤشرات الرئيسية</h2><span>ملخص النشاط</span></div>
+<div class="stat-grid">
+  <a href="/reports" class="stat-card"><div class="stat-meta"><span class="stat-icon violet">▤</span><span class="stat-trend">إجمالي</span></div><strong>{{ total }}</strong><span>تقرير مسجل</span><small>جميع أنواع التقارير</small></a>
+  <a href="/reports?kind=training" class="stat-card"><div class="stat-meta"><span class="stat-icon blue">◈</span><span class="stat-trend">تكوين</span></div><strong>{{ counts.training }}</strong><span>حصة تكوين مهني</span><small>الورشات والحصص المهنية</small></a>
+  <a href="/reports?kind=pedagogical" class="stat-card"><div class="stat-meta"><span class="stat-icon peach">◇</span><span class="stat-trend">تربوي</span></div><strong>{{ counts.pedagogical }}</strong><span>حصة تأهيل تربوي</span><small>الدروس والأنشطة التعليمية</small></a>
+  <a href="/reports?kind=activity" class="stat-card"><div class="stat-meta"><span class="stat-icon mint">✧</span><span class="stat-trend">موازية</span></div><strong>{{ counts.activity }}</strong><span>نشاط موازٍ</span><small>أنشطة ثقافية ورياضية</small></a>
+</div>
+<div class="lower-grid">
+ <section class="panel recent-panel"><div class="panel-head"><div><h2>آخر التقارير</h2><p>أحدث التقارير التي تمت إضافتها للنظام</p></div><a class="text-link" href="/reports">عرض الكل ←</a></div>
+ {% if recent %}<div class="table-scroller"><table class="data-table"><thead><tr><th>التقرير</th><th>التصنيف</th><th>التاريخ</th><th></th></tr></thead><tbody>
+ {% for r in recent %}<tr><td><a class="table-title" href="/reports/{{ r.id }}">{{ r.subject }}</a><small>{{ r.group_name }}</small></td><td><span class="kind-pill kind-{{ r.kind }}">{{ kind_labels[r.kind] }}</span></td><td class="nowrap">{{ r.session_date.strftime('%Y/%m/%d') }}</td><td><a class="table-arrow" href="/reports/{{ r.id }}">←</a></td></tr>{% endfor %}
+ </tbody></table></div>{% else %}<div class="empty-state compact"><span>▤</span><strong>لم يتم تسجيل تقارير بعد</strong><p>ابدأ بإضافة أول تقرير في المنصة.</p><a class="btn btn-outline" href="/reports/new">إضافة تقرير</a></div>{% endif %}
+ </section>
+ <aside class="side-panels"><div class="panel quick-panel"><h2>إجراءات سريعة</h2><a href="/reports/new?kind=training"><span class="quick-symbol violet">◈</span><span><strong>حصة تكوين مهني</strong><small>تقرير ورشة أو تدريب</small></span><span class="arrow">←</span></a><a href="/reports/new?kind=pedagogical"><span class="quick-symbol peach">◇</span><span><strong>حصة تأهيل تربوي</strong><small>تقرير درس تربوي</small></span><span class="arrow">←</span></a><a href="/reports/new?kind=activity"><span class="quick-symbol mint">✧</span><span><strong>نشاط موازٍ</strong><small>تقرير نشاط تربوي أو ثقافي</small></span><span class="arrow">←</span></a><a href="/absences/new"><span class="quick-symbol blue">◷</span><span><strong>تسجيل غياب</strong><small>إضافة غياب مستفيد</small></span><span class="arrow">←</span></a></div>
+ <div class="panel mini-stats"><h2>التتبع والحضور</h2><div class="mini-stats-row"><span>تقارير هذا الشهر</span><strong>{{ this_month }}</strong></div><div class="mini-stats-row"><span>سجلات الغياب</span><strong>{{ absences }}</strong></div><div class="mini-stats-row"><span>نسبة الحضور المصرّح بها</span><strong>{{ attendance_rate if attendance_rate is not none else '—' }}{% if attendance_rate is not none %}%{% endif %}</strong></div><a class="text-link" href="/absences">إدارة سجل الغياب ←</a></div></aside>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}لوحة القيادة{% endblock %} | جمعية نور الأمل</title>
+  <link rel="stylesheet" href="{{ url_for('static',path='style.css') }}">
+</head>
+<body class="{% if page in ['login','setup'] %}guest-body{% else %}app-body{% endif %}">
+{% if page in ['login','setup'] %}
+  {% block guest %}{% endblock %}
+{% else %}
+<div class="app-shell">
+  <aside class="sidebar screen-only" aria-label="القائمة الجانبية">
+    <a href="/" class="brand">
+      <span class="brand-symbol">ن</span>
+      <span><strong>نور الأمل</strong><small>الفرصة الثانية · الجيل الجديد</small></span>
+    </a>
+    <div class="sidebar-caption">مساحة العمل</div>
+    <nav class="nav-list" aria-label="التنقل">
+      <a class="nav-link {% if page=='dashboard' %}active{% endif %}" href="/"><span class="nav-icon">▦</span><span>لوحة القيادة</span></a>
+      <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='' %}active{% endif %}" href="/reports"><span class="nav-icon">▤</span><span>كل التقارير</span></a>
+      <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='training' %}active{% endif %}" href="/reports?kind=training"><span class="nav-icon">◈</span><span>التكوين المهني</span></a>
+      <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='pedagogical' %}active{% endif %}" href="/reports?kind=pedagogical"><span class="nav-icon">◇</span><span>التأهيل التربوي</span></a>
+      <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='activity' %}active{% endif %}" href="/reports?kind=activity"><span class="nav-icon">✧</span><span>الأنشطة الموازية</span></a>
+      <a class="nav-link {% if page=='absences' %}active{% endif %}" href="/absences"><span class="nav-icon">◷</span><span>سجل الغياب</span></a>
+    </nav>
+    <div class="sidebar-caption second-caption">الإدارة</div>
+    <nav class="nav-list">
+      <a class="nav-link" href="/export/reports.csv"><span class="nav-icon">⇩</span><span>تصدير التقارير CSV</span></a>
+      <a class="nav-link" href="/export/absences.csv"><span class="nav-icon">⇩</span><span>تصدير الغياب CSV</span></a>
+    </nav>
+    <div class="sidebar-bottom"><span class="status-dot"></span> مساحة خاصة بالجمعية <small>بيانات محمية بتسجيل الدخول</small></div>
+  </aside>
+  <div class="main-column">
+    <header class="topbar screen-only">
+      <div class="topbar-path"><span>جمعية نور الأمل</span><span class="divider-slash">/</span><strong>{% block breadcrumb %}لوحة القيادة{% endblock %}</strong></div>
+      <div class="topbar-actions"><span class="account-pill"><span class="account-avatar">ن</span> الإدارة</span>
+        <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ csrf }}"><button class="logout-button" type="submit" title="تسجيل الخروج">خروج ↗</button></form>
+      </div>
+    </header>
+    <main class="content">{% block content %}{% endblock %}</main>
+    <footer class="site-footer screen-only">جمعية نور الأمل · برنامج الفرصة الثانية – الجيل الجديد <span>نظام تدبير التقارير</span></footer>
+  </div>
+</div>
+{% endif %}
+</body>
+</html>

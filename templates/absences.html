@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}سجل الغياب{% endblock %}
+{% block breadcrumb %}سجل الغياب{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">التتبع / الحضور والغياب</span><h1>سجل الغياب</h1><p>تتبع غياب المستفيدين وإعداد كشوفات دورية للطباعة والتصدير.</p></div><a href="/absences/new" class="btn btn-primary">+ تسجيل غياب</a></div>
+<div class="absence-stats"><div class="panel absence-stat"><span class="stat-icon blue">◷</span><div><span>مجموع سجلات الغياب</span><strong>{{ total }}</strong></div></div><div class="panel absence-stat"><span class="stat-icon peach">!</span><div><span>غياب غير مبرر</span><strong>{{ unjustified }}</strong></div></div><div class="panel absence-stat"><span class="stat-icon mint">✓</span><div><span>غياب مبرر</span><strong>{{ total-unjustified }}</strong></div></div></div>
+<section class="panel content-panel"><form action="/absences" method="get" class="search-bar"><label class="search-input"><span>⌕</span><input type="search" name="q" value="{{ q }}" placeholder="ابحث باسم المستفيد أو المجموعة..."></label><button class="btn btn-outline" type="submit">بحث</button><a href="/export/absences.csv" class="btn btn-soft">⇩ تصدير CSV</a><a href="/absences/summary/print" class="btn btn-soft">▤ كشف الغياب</a></form>
+<div class="list-head"><strong>سجل الغياب الفردي</strong><span>{{ rows|length }} سجل</span></div>
+{% if rows %}<div class="table-scroller"><table class="data-table"><thead><tr><th>المستفيد(ة)</th><th>المجموعة</th><th>تاريخ الغياب</th><th>السبب</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>
+{% for a in rows %}<tr><td class="table-title">{{ a.learner_name }}</td><td>{{ a.group_name }}</td><td class="nowrap">{{ a.absence_date.strftime('%Y/%m/%d') }}</td><td>{{ a.reason }}</td><td><span class="state-pill {% if a.justified %}ok{% else %}warning{% endif %}">{{ 'مبرر' if a.justified else 'غير مبرر' }}</span></td><td><div class="inline-actions"><a href="/absences/{{ a.id }}/edit" class="small-link">تعديل</a><form action="/absences/{{ a.id }}/delete" method="post" onsubmit="return confirm('حذف سجل الغياب؟')"><input type="hidden" name="_csrf" value="{{ csrf }}"><button type="submit" class="small-link danger-link">حذف</button></form></div></td></tr>{% endfor %}</tbody></table></div>
+{% else %}<div class="empty-state"><div class="empty-illustration">◷</div><h3>لا توجد سجلات غياب</h3><p>أضف أول غياب لمتابعة انتظام الحضور.</p><a href="/absences/new" class="btn btn-primary">تسجيل غياب</a></div>{% endif %}</section>
+{% endblock %}

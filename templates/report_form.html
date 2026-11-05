@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block breadcrumb %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><a class="back-link" href="/reports">→ العودة إلى التقارير</a><h1>{{ title }}</h1><p>أدخل معلومات الحصة أو النشاط، ثم احفظ التقرير لإمكانية طباعته وتعديله.</p></div></div>
+<form action="{{ action }}" method="post" class="editor-layout">
+<input type="hidden" name="_csrf" value="{{ csrf }}">
+<div class="editor-main">
+  <section class="panel form-panel"><div class="form-heading"><span class="form-num">01</span><div><h2>المعلومات الأساسية</h2><p>بيانات تعريف الحصة أو النشاط</p></div></div>
+  <div class="fields-grid">
+   <label class="field full">نوع التقرير <span class="required">*</span><select name="kind" required>{% for key, label in kind_labels.items() %}<option value="{{ key }}" {% if (report.kind if report else selected_kind)==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+   <label class="field full">عنوان الحصة أو النشاط <span class="required">*</span><input name="subject" maxlength="200" required value="{{ report.subject if report else '' }}" placeholder="مثال: أساسيات صيانة الأجهزة الكهربائية"></label>
+   <label class="field">تاريخ الإنجاز <span class="required">*</span><input name="session_date" type="date" required value="{{ report.session_date.isoformat() if report else today().isoformat() }}"></label>
+   <label class="field">المجموعة / الفوج <span class="required">*</span><input name="group_name" maxlength="120" required value="{{ report.group_name if report else '' }}" placeholder="مثال: الفوج الأول"></label>
+   <label class="field">اسم المؤطر(ة) <span class="required">*</span><input name="trainer_name" maxlength="140" required value="{{ report.trainer_name if report else '' }}" placeholder="الاسم الكامل"></label>
+   <label class="field">مكان الإنجاز<input name="venue" maxlength="200" value="{{ report.venue if report else '' }}" placeholder="مركز الفرصة الثانية"></label>
+   <label class="field">ساعة البداية<input name="start_time" type="time" value="{{ report.start_time if report else '' }}"></label>
+   <label class="field">المدة بالدقائق<input name="duration_minutes" type="number" min="0" max="1440" required value="{{ report.duration_minutes if report else 90 }}"></label>
+  </div></section>
+  <section class="panel form-panel"><div class="form-heading"><span class="form-num">02</span><div><h2>تفاصيل الحصة</h2><p>المضمون والأهداف والمخرجات التربوية</p></div></div>
+   <div class="fields-stack"><label class="field">الأهداف المسطرة<textarea name="objectives" rows="4" placeholder="ما الأهداف التي تسعى الحصة لتحقيقها؟">{{ report.objectives if report else '' }}</textarea></label>
+   <label class="field">سير الحصة / الأنشطة المنجزة<textarea name="activities" rows="5" placeholder="صف المراحل والأنشطة والتقنيات المستعملة...">{{ report.activities if report else '' }}</textarea></label>
+   <label class="field">النتائج والمكتسبات<textarea name="results" rows="4" placeholder="ما التعلمات أو المهارات التي اكتسبها المستفيدون؟">{{ report.results if report else '' }}</textarea></label>
+   <label class="field">الصعوبات والملاحظات<textarea name="challenges" rows="3" placeholder="الصعوبات التي تمت ملاحظتها...">{{ report.challenges if report else '' }}</textarea></label>
+   <label class="field">التوصيات والإجراءات المقترحة<textarea name="recommendations" rows="3" placeholder="اقتراحات الحصص المقبلة أو الدعم المطلوب...">{{ report.recommendations if report else '' }}</textarea></label></div>
+  </section>
+</div>
+<aside class="editor-side"><section class="panel form-panel"><div class="form-heading"><span class="form-num">03</span><div><h2>الحضور والغياب</h2><p>عدد المستفيدين في الحصة</p></div></div><div class="fields-stack"><label class="field">عدد الحاضرين<input name="present_count" type="number" min="0" required value="{{ report.present_count if report else 0 }}"></label><label class="field">عدد الغائبين<input name="absent_count" type="number" min="0" required value="{{ report.absent_count if report else 0 }}"></label></div><div class="tip-box">هذه الأعداد خاصة بالحصة. لتسجيل أسماء الغائبين فردياً، استخدم <a href="/absences/new">سجل الغياب</a>.</div></section>
+<section class="panel save-panel"><h3>حفظ التقرير</h3><p>يمكن تعديل المعلومات لاحقاً، وطباعة نسخة رسمية من صفحة التقرير.</p><button class="btn btn-primary wide" type="submit">✓ حفظ التقرير</button><a class="btn btn-outline wide" href="/reports">إلغاء</a></section></aside>
+</form>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block breadcrumb %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><a href="/absences" class="back-link">→ العودة إلى سجل الغياب</a><h1>{{ title }}</h1><p>سجل معلومات غياب المستفيد بكل دقة، مع تحديد الحالة والأسباب.</p></div></div>
+<form action="{{ action }}" method="post" class="form-layout-narrow"><input type="hidden" name="_csrf" value="{{ csrf }}"><section class="panel form-panel"><div class="form-heading"><span class="form-num">01</span><div><h2>تفاصيل الغياب</h2><p>المعلومات الخاصة بالمستفيد والغياب</p></div></div><div class="fields-grid">
+<label class="field full">اسم المستفيد(ة) <span class="required">*</span><input type="text" name="learner_name" maxlength="140" required placeholder="الاسم الكامل" value="{{ absence.learner_name if absence else '' }}"></label>
+<label class="field">المجموعة / الفوج <span class="required">*</span><input name="group_name" maxlength="120" required placeholder="الفوج الأول" value="{{ absence.group_name if absence else '' }}"></label>
+<label class="field">تاريخ الغياب <span class="required">*</span><input name="absence_date" type="date" required value="{{ absence.absence_date.isoformat() if absence else today().isoformat() }}"></label>
+<label class="field full">سبب الغياب<select name="reason">{% for reason in reason_labels %}<option value="{{ reason }}" {% if absence and absence.reason == reason %}selected{% endif %}>{{ reason }}</option>{% endfor %}</select></label>
+<div class="field full"><label class="checkbox-label"><input type="checkbox" name="justified" value="true" {% if absence and absence.justified %}checked{% endif %}><span>الغياب مبرر (تم الإدلاء بمبرر مقبول)</span></label></div>
+<label class="field full">ملاحظات إضافية<textarea name="notes" rows="5" placeholder="تفاصيل أو إجراءات المتابعة إن وجدت">{{ absence.notes if absence else '' }}</textarea></label>
+</div><div class="form-buttons"><button type="submit" class="btn btn-primary">✓ حفظ سجل الغياب</button><a href="/absences" class="btn btn-outline">إلغاء</a></div></section></form>
+{% endblock %}

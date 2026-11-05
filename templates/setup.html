@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}إعداد التطبيق{% endblock %}
+{% block guest %}
+<div class="setup-wrap"><div class="setup-panel"><div class="brand inline-brand"><span class="brand-symbol">ن</span><span><strong>جمعية نور الأمل</strong><small>تهيئة النظام</small></span></div>
+ <span class="eyebrow">خطوة إعداد واحدة</span><h1>التطبيق جاهز، ويلزم إعداد الدخول والتخزين</h1>
+ <p class="muted">لحماية بيانات المستفيدين، لا يحتوي التطبيق على كلمة مرور افتراضية ولا يخزن البيانات تلقائيًا على مساحة Vercel المؤقتة.</p>
+ <div class="setup-steps"><div><strong>1</strong><span>أنشئ كلمة مرور ومفتاحًا آمنًا بتشغيل <code>python scripts/make_secrets.py</code></span></div>
+ <div><strong>2</strong><span>ضع <code>APP_SECRET</code> و <code>ADMIN_PASSWORD_HASH</code> في إعدادات البيئة.</span></div>
+ <div><strong>3</strong><span>أضف <code>DATABASE_URL</code> لقاعدة PostgreSQL الدائمة عند النشر على Vercel.</span></div></div>
+ <p class="hint">التفاصيل كاملة داخل ملف README.md المرفق بالمشروع.</p>
+ </div></div>
+{% endblock %}

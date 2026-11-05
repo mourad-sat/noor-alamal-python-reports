@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}تقارير الحصص والأنشطة{% endblock %}
+{% block breadcrumb %}التقارير{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">التقارير / إدارة الحصص</span><h1>تقارير الحصص والأنشطة</h1><p>سجل منظم لجميع تقارير التكوين والتأهيل والأنشطة الموازية.</p></div><a class="btn btn-primary" href="/reports/new?kind={{ selected_kind if selected_kind in kind_labels else 'training' }}">+ تقرير جديد</a></div>
+<div class="tabs-row"><a href="/reports" class="tab {% if selected_kind not in kind_labels %}selected{% endif %}">جميع التقارير</a>{% for key, label in kind_labels.items() %}<a href="/reports?kind={{ key }}" class="tab {% if selected_kind == key %}selected{% endif %}">{{ label }}</a>{% endfor %}</div>
+<section class="panel content-panel"><form class="search-bar" method="get" action="/reports"><input type="hidden" name="kind" value="{{ selected_kind }}"><label class="search-input"><span>⌕</span><input type="search" name="q" value="{{ q }}" placeholder="البحث بالعنوان أو المجموعة أو المؤطر..."></label><button type="submit" class="btn btn-outline">بحث</button><a href="/export/reports.csv" class="btn btn-soft">⇩ تصدير CSV</a></form>
+<div class="list-head"><strong>النتائج المسجلة</strong><span>{{ rows|length }} تقرير</span></div>
+{% if rows %}<div class="table-scroller"><table class="data-table"><thead><tr><th>عنوان التقرير</th><th>النوع</th><th>المؤطر / المجموعة</th><th>التاريخ</th><th>الحاضرون</th><th>الإجراءات</th></tr></thead><tbody>
+{% for r in rows %}<tr><td><a href="/reports/{{ r.id }}" class="table-title">{{ r.subject }}</a><small>رقم التقرير #{{ r.id }}</small></td><td><span class="kind-pill kind-{{ r.kind }}">{{ kind_labels[r.kind] }}</span></td><td>{{ r.trainer_name }}<small>{{ r.group_name }}</small></td><td class="nowrap">{{ r.session_date.strftime('%Y/%m/%d') }}</td><td><strong class="table-count">{{ r.present_count }}</strong></td><td class="nowrap"><a href="/reports/{{ r.id }}" class="small-link">عرض</a><a href="/reports/{{ r.id }}/edit" class="small-link secondary">تعديل</a></td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty-state"><div class="empty-illustration">▤</div><h3>لا توجد تقارير مطابقة</h3><p>يمكنك إضافة تقرير جديد أو تغيير كلمات البحث.</p><a href="/reports/new" class="btn btn-primary">إضافة أول تقرير</a></div>{% endif %}
+</section>
+{% endblock %}
