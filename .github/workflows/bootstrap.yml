@@ -1,0 +1,43 @@
+name: Import FastAPI app source
+on:
+  push:
+    paths:
+      - ".github/workflows/bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: true
+
+      - name: Verify and extract checked application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 001 002 003 004 005 006 007 008 009; do test -f "bootstrap/source.$i"; done
+          cat bootstrap/source.00{1..9} | base64 --decode > /tmp/noor_source.tar.xz
+          echo "c7bcbab60620a7905934638514f85709248e477317755b430b1eb7f4f53e6dcd  /tmp/noor_source.tar.xz" | sha256sum --check
+          tar -tJf /tmp/noor_source.tar.xz > /tmp/noor_manifest.txt
+          grep -q '^noor_alamal_reports/app.py$' /tmp/noor_manifest.txt
+          grep -q '^noor_alamal_reports/requirements.txt$' /tmp/noor_manifest.txt
+          mkdir -p /tmp/noor_extract
+          tar -xJf /tmp/noor_source.tar.xz -C /tmp/noor_extract
+          cp -a /tmp/noor_extract/noor_alamal_reports/. .
+          rm -rf bootstrap
+          rm -f .github/workflows/bootstrap.yml
+          rmdir .github/workflows .github 2>/dev/null || true
+
+      - name: Commit expanded application
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "feat: import tested Noor Al Amal FastAPI reporting app"
+          git push origin HEAD:main
