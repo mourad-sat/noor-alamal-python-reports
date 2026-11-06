@@ -596,7 +596,11 @@ def mark_attendance(session_id:int,request:Request,token:str=Form(alias="_csrf")
     if en.center_id!=slot.center_id or en.track_id!=slot.track_id or en.year_id!=slot.year_id:
         raise HTTPException(403,"المستفيد غير مسجل في هذه الحصة")
     if status not in ("present","absent","late") or s.status=="canceled" or disciplinary_status(db,en,s.held_on):
-        raise HTTPException(422,"لا يجوز تسجيل الغياب لحصة ملغاة أو أثناء الإقصاء التأديبي")
+        raise HTTPException(422,"لا يجوز تسجيل الحضور أو الغياب لحصة ملغاة أو أثناء الإقصاء التأديبي")
+    pending_absences=db.scalar(select(func.count()).select_from(Attendance).where(
+        Attendance.enrollment_id==en.id,Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
+    if status in ("present","late") and pending_absences:
+        raise HTTPException(409,"لا يجوز السماح بالدخول مع غياب معلق قبل إذن المنسق")
     a=db.scalar(select(Attendance).where(Attendance.session_id==s.id,Attendance.enrollment_id==en.id))
     if not a:a=Attendance(session_id=s.id,enrollment_id=en.id,status=status,recorded_by=user["name"]);db.add(a)
     else:
