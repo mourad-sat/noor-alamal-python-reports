@@ -561,7 +561,7 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
             area("challenges","الصعوبات")+area("recommendations","التوصيات"),"حفظ مسودة التقرير")+'</section>'
         if report:body+=f'<section>{form(f"/platform/reports/{report.id}/submit",request.session["csrf"],"","إرسال للمراجعة")}</section>'
     if report:
-        body+=f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p><p>{e(report.review_comment)}</p></section>'
+        body+=f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p><p>{e(report.review_comment)}</p><p><a class="button" href="/platform/reports/{report.id}/attachments">مرفقات التقرير</a></p></section>'
     return page(request,user,"تدبير الحصة",body)
 
 def absence_notice(db:Session,en:Enrollment,held_on:date):
@@ -659,6 +659,7 @@ def review_reports(request:Request,db:Session=Depends(get_db),user=Depends(actor
         if user["role"]=="coordinator" and r.status=="submitted":
             approve=form(f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"مصادقة") + form(
                 f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع للتصحيح")
+        approve+=f' <a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
         rows.append([e(s.held_on),e(slot.subject),e(r.subject),e(STATUS_LABELS.get(r.status,r.status)),
                      e(r.review_comment),approve])
     body='<section><h2>تقارير الحصص المنفصلة</h2>'+table(["التاريخ","المادة","عنوان التقرير","الحالة","ملاحظة المنسق","المراجعة"],rows)+'</section>'
