@@ -85,10 +85,14 @@ def initialize_database():
     global _db_ready
     if _db_ready or engine is None:
         return
-    # Production PostgreSQL schema is pre-provisioned through a controlled migration.
-    # Do not require CREATE SCHEMA privileges from the runtime database account.
-    with engine.begin() as conn:
-        Base.metadata.create_all(conn)
+    # Production schemas are changed only by reviewed migrations. Runtime
+    # requests must never create private learner tables without RLS protection.
+    if PG:
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    else:
+        with engine.begin() as conn:
+            Base.metadata.create_all(conn)
     _db_ready = True
 
 def get_db():
