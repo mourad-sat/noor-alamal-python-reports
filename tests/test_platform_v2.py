@@ -128,3 +128,37 @@ def test_registration_attendance_permit_grade_review_and_notices(client):
     c1=signin(client,"coord1","strong-test-password-12345")
     assert post(client,"/platform/corrections/1/review",c1,decision="approved").status_code==303
     assert "18.00" in client.get("/platform/learners/1").text
+
+
+def test_partial_excel_csv_import_and_qr_proof(client):
+    import html
+    import re
+    admin=setup_org(client)
+    rows=(
+        "الاسم الكامل,الجنس,تاريخ الازدياد,هاتف ولي الأمر,اسم ولي الأمر\\n"
+        "سارة الاختبار,أنثى,2011-02-03,0611111111,والد سارة\\n"
+        "حسن الاختبار,ذكر,2013-01-08,,ولي حسن\\n"
+    ).replace("\\n","\n").encode("utf-8-sig")
+    response=client.post("/platform/import/preview",data={"_csrf":admin,"track_id":"1"},
+         files={"file":("sample.csv",rows,"text/csv")})
+    assert response.status_code==200,response.text[:600]
+    assert "صفوف صالحة: 1" in response.text
+    assert "مرفوضة: 1" in response.text
+    match_payload=re.search('name="payload" value="([^"]+)"',response.text)
+    match_signature=re.search('name="signature" value="([^"]+)"',response.text)
+    assert match_payload and match_signature
+    committed=post(client,"/platform/import/commit",admin,payload=html.unescape(match_payload.group(1)),
+        signature=match_signature.group(1))
+    assert committed.status_code==200,committed.text[:500]
+    assert "تم إدخال 1 مستفيدًا" in committed.text
+    assert "سارة الاختبار" in client.get("/platform/learners").text
+    export=post(client,"/platform/exports/grades/print",admin,year_id=1,center_id=1,track_id=1)
+    assert export.status_code==200,export.text[:500]
+    assert "سارة الاختبار" in export.text
+    assert 'class="qr"' in export.text
+    found=re.search(r'https://noor-alamal-python-reports.vercel.app/verify/([A-Za-z0-9_-]+)',export.text)
+    assert found,export.text[-2000:]
+    verify=client.get("/verify/"+found.group(1))
+    assert verify.status_code==200
+    assert "مطابقة للبيانات الرسمية" in verify.text
+    assert "سارة الاختبار" not in verify.text
