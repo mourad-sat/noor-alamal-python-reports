@@ -192,6 +192,7 @@ def login(request: Request, username: Annotated[str, Form()], password: Annotate
     request.session['role'] = 'admin' if is_admin else staff.role
     if staff:
         request.session['staff_id'] = staff.id
+        request.session['session_version'] = staff.session_version
     return RedirectResponse('/' if is_admin else '/platform', status_code=303)
 
 @app.post('/logout')
