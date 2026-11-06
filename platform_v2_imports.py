@@ -61,7 +61,7 @@ def clean_row(raw):
         first=str(column(r,"الاسم","prenom","prénom","first name")).strip()
         family=str(column(r,"النسب","اللقب","nom","last name")).strip()
         full_name=" ".join(x for x in (first,family) if x)
-    dob_field=column(r,"تاريخ الازدياد","تاريخ الميلاد","تاريخ الازدياد والمكان","date de naissance","birthdate")
+    dob_field=column(r,"تاريخ الازدياد","تاريخ الميلاد","تاريخ الازدياد والمكان","date de naissance","birthdate","born_on")
     mixed=column(r,"تاريخ ومكان الازدياد")
     if not dob_field and mixed:dob_field=mixed
     born_on=parse_date(dob_field)
@@ -69,12 +69,12 @@ def clean_row(raw):
     if not place and mixed:
         place=re.sub(r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\d{4}-\d{1,2}-\d{1,2})","",str(mixed)).strip(" ,،-")
     gender=str(column(r,"الجنس","النوع","gender","sexe")).strip()
-    guardian_name=str(column(r,"اسم ولي الأمر","اسم الوصي","ولي الأمر")).strip()
-    guardian_phone=str(column(r,"هاتف ولي الأمر","هاتف الوصي","guardian phone")).strip()
+    guardian_name=str(column(r,"اسم ولي الأمر","اسم الوصي","ولي الأمر","guardian_name")).strip()
+    guardian_phone=str(column(r,"هاتف ولي الأمر","هاتف الوصي","guardian phone","guardian_phone")).strip()
     record=dict(full_name=full_name,gender=gender,born_on=born_on.isoformat() if born_on else None,
        birthplace=place,phone=str(column(r,"الهاتف","هاتف المستفيد","phone")).strip(),
        address=str(column(r,"العنوان","address")).strip(),
-       guardian_name=guardian_name,guardian_relationship=str(column(r,"صلة القرابة","الصفة")).strip(),
+       guardian_name=guardian_name,guardian_relationship=str(column(r,"صلة القرابة","الصفة","guardian_relationship")).strip(),
        guardian_phone=guardian_phone)
     if len(full_name)<3 or len(full_name)>180:raise ValueError("الاسم الكامل غير صالح")
     if full_name[:1] in ("=","+","-","@"):raise ValueError("صيغة غير مسموح بها في الاسم")
