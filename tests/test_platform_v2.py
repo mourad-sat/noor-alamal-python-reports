@@ -95,11 +95,19 @@ def test_registration_attendance_permit_grade_review_and_notices(client):
     mark=post(client,"/platform/sessions/1/attendance",instr,enrollment_id=1,status="absent")
     assert mark.status_code==303,mark.text[:500]
     assert "غياب سابق معلق" in client.get("/platform/sessions/1").text
+    forbidden_entry=post(client,"/platform/sessions/1/attendance",instr,enrollment_id=1,status="present")
+    assert forbidden_entry.status_code==409,forbidden_entry.text[:300]
     bad=post(client,"/platform/learners/1/permit",instr,reason="توضيح طبي مكتوب")
     assert bad.status_code==403
     report=post(client,"/platform/sessions/1/report",instr,subject="حصة تجريبية",
         objectives="تجريب",activities="نشاط",results="النتائج",challenges="صعوبات",recommendations="توصيات")
     assert report.status_code==303,report.text[:500]
+    import base64
+    one_pixel=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/vFQAAAAASUVORK5CYII=")
+    upload=client.post("/platform/reports/1/attachments",data={"_csrf":instr},
+             files={"file":("evidence.png",one_pixel,"image/png")})
+    assert upload.status_code==303,upload.text[:300]
+    assert client.get("/platform/attachments/1/download").status_code==200
     assert post(client,"/platform/reports/1/submit",instr).status_code==303
     assessment=post(client,"/platform/assessments",instr,track_id=1,subject="مهني",
         title="اختبار أول",held_on="2026-11-06",coefficient="2")
@@ -109,6 +117,8 @@ def test_registration_attendance_permit_grade_review_and_notices(client):
     signout(client,instr)
     c1=signin(client,"coord1","strong-test-password-12345")
     assert post(client,"/platform/reports/1/review",c1,decision="approved",comment="").status_code==303
+    assert post(client,"/platform/attachments/1/select",c1).status_code==303
+    assert client.get("/platform/attachments/1/view").status_code==200
     assert post(client,"/platform/grades/1/approve",c1).status_code==303
     assert "17.50" in client.get("/platform/learners/1").text
     permit=post(client,"/platform/learners/1/permit",c1,reason="اطلعت على أسباب الغياب وقبلتها")
