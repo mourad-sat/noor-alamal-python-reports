@@ -346,7 +346,7 @@ def learners_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
 def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
     at=at or date.today()
     records=db.scalars(select(Discipline).where(Discipline.enrollment_id==en.id,
-                                               Discipline.status.in_(("effective","early_pending"))).all()
+                                               Discipline.status.in_(("effective","early_pending")))).all()
     for d in records:
         if not d.return_authorized and (d.excluded_from is None or d.excluded_from<=at):
             # At the end date, a separate reasoned return authorization remains mandatory.
