@@ -95,3 +95,9 @@ def test_csv_formula_safety(client):
     from app import safe_csv
     assert safe_csv('=1+1') == "'=1+1"
     assert safe_csv('عربي') == 'عربي'
+
+
+def test_health_checks_database(client):
+    response = client.get('/health')
+    assert response.status_code == 200
+    assert response.json() == {'service': 'noor-alamal', 'status': 'ready'}
