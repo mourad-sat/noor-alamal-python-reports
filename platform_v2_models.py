@@ -40,6 +40,7 @@ class Staff(Base):
     password_hash: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20))  # coordinator/instructor/educator
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 class Track(Base):
@@ -274,3 +275,9 @@ class DocumentProof(Base):
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class Setting(Base):
+    __tablename__ = "v2_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
