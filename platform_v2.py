@@ -346,7 +346,7 @@ def learners_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
 def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
     at=at or date.today()
     records=db.scalars(select(Discipline).where(Discipline.enrollment_id==en.id,
-                                               Discipline.status=="effective")).all()
+                                               Discipline.status.in_(("effective","early_pending"))).all()
     for d in records:
         if not d.return_authorized and (d.excluded_from is None or d.excluded_from<=at):
             # At the end date, a separate reasoned return authorization remains mandatory.
@@ -1031,8 +1031,8 @@ def notices_page(request:Request,db:Session=Depends(get_db),user=Depends(actor))
             action+=f' <a class="button" href="/platform/notices/{n.id}/print" target="_blank">طباعة</a>'
         rows.append([e(db.get(Learner,en.learner_id).full_name),e(n.kind),e(n.body),
               e(STATUS_LABELS.get(n.status,n.status)),e(n.delivered_at or "—"),action])
-    body='<section><h2>المسودات التلقائية لا تعني إصدارًا تلقائيًا</h2><p class="subtle">لا تُرسل الإشعارات إلكترونيًا، وللمنسق وحده اعتماد نص الورقة وإصدارها ثم تسجيل حالة التسليم وتاريخه فقط.</p>'+
-         table(["المستفيد","النوع","المضمون","الحالة","تاريخ التسليم","الإجراء"],rows)+'</section>'
+    body=('<section><h2>المسودات التلقائية لا تعني إصدارًا تلقائيًا</h2><p class="subtle">لا تُرسل الإشعارات إلكترونيًا، وللمنسق وحده اعتماد نص الورقة وإصدارها ثم تسجيل حالة التسليم وتاريخه فقط.</p>'
+          +table(["المستفيد","النوع","المضمون","الحالة","تاريخ التسليم","الإجراء"],rows)+'</section>')
     if user["role"]=="coordinator":
         body='<section><h2>إشعار يدوي</h2>'+form("/platform/notices",csrf,
          field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
