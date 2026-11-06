@@ -263,3 +263,14 @@ class Attachment(Base):
     byte_size: Mapped[int] = mapped_column(Integer)
     select_for_summary: Mapped[bool] = mapped_column(Boolean, default=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class DocumentProof(Base):
+    __tablename__ = "v2_document_proofs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
