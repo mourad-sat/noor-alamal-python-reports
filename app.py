@@ -396,3 +396,4 @@ def export_absences(_: None = Depends(auth_required), db: Session = Depends(get_
 # Load the role-restricted second-generation portal after core models and routes.
 import platform_v2  # noqa: E402,F401
 import platform_v2_imports  # noqa: E402,F401
+import platform_v2_exports  # noqa: E402,F401
