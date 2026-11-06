@@ -310,3 +310,279 @@ def assign_staff(request:Request,token:str=Form(alias="_csrf"),staff_id:int=Form
     try:db.flush();log(db,user,"assign","staff",s.id);db.commit()
     except IntegrityError:db.rollback();raise HTTPException(409,"هذا الإسناد موجود")
     return redirect("/platform/staff")
+
+
+@app.get("/platform/learners",response_class=HTMLResponse)
+def learners_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    ensure_data(db)
+    csrf=request.session["csrf"]
+    centers=center_options(db,user)
+    enrolls=db.scalars(select(Enrollment).order_by(Enrollment.id.desc()).limit(800)).all()
+    enrolls=[en for en in enrolls if center_allowed(user,en.center_id) and (
+        user["role"] in ("admin","coordinator") or any(a.track_id==en.track_id for a in user["assignments"]))]
+    rows=[]
+    for en in enrolls:
+        l=db.get(Learner,en.learner_id)
+        pend=db.scalar(select(func.count()).select_from(Attendance).where(Attendance.enrollment_id==en.id,
+                        Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
+        disciplinary=disciplinary_status(db,en)
+        state='<span class="danger">غياب معلق</span>' if pend else '<span class="good">لا غياب معلق</span>'
+        if disciplinary:state+=' · <span class="danger">إقصاء تأديبي</span>'
+        rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',e(db.get(Center,en.center_id).name),
+                     e(db.get(Track,en.track_id).name),state])
+    body=f"<section>{table(['المستفيد','المركز','المسلك','الحالة'],rows)}</section>"
+    if user["role"] in ("admin","coordinator"):
+        years=db.scalars(select(Year)).all()
+        body='<section><h2>تسجيل مستفيد في سنة ومسلك واحد</h2>'+form("/platform/learners",csrf,
+            field("full_name","اسم المستفيد")+choose("gender","الجنس",[("","غير محدد"),("ذكر","ذكر"),("أنثى","أنثى")])+
+            field("born_on","تاريخ الازدياد","date",False)+field("birthplace","مكان الازدياد",required=False)+
+            field("phone","هاتف المستفيد",required=False)+field("address","العنوان",required=False)+
+            field("guardian_name","اسم ولي الأمر",required=False)+field("guardian_relationship","الصفة",required=False)+
+            field("guardian_phone","هاتف ولي الأمر للقاصر",required=False)+
+            choose("year_id","السنة",[(y.id,y.label) for y in years if not y.archived])+
+            choose("track_id","المسلك",tracks_options(db,user)),"تسجيل")+'</section>'+body
+    return page(request,user,"ملفات المستفيدين",body)
+
+def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
+    at=at or date.today()
+    records=db.scalars(select(Discipline).where(Discipline.enrollment_id==en.id,
+                                               Discipline.status=="effective")).all()
+    for d in records:
+        if not d.return_authorized and (d.excluded_from is None or d.excluded_from<=at):
+            # At the end date, a separate reasoned return authorization remains mandatory.
+            return True
+    return False
+
+@app.post("/platform/learners")
+def learner_create(request:Request,token:str=Form(alias="_csrf"),full_name:str=Form(),gender:str=Form(""),
+    born_on:date|None=Form(None),birthplace:str=Form(""),phone:str=Form(""),address:str=Form(""),
+    guardian_name:str=Form(""),guardian_relationship:str=Form(""),guardian_phone:str=Form(""),
+    year_id:int=Form(),track_id:int=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin","coordinator");assert_csrf(request,token)
+    t=db.get(Track,track_id);y=db.get(Year,year_id)
+    if not t or not y or t.year_id!=year_id or not center_allowed(user,t.center_id) or not full_name.strip():
+        raise HTTPException(422,"السنة أو المركز أو المسلك أو الاسم غير صحيح")
+    if born_on and born_on>date.today():raise HTTPException(422,"تاريخ الازدياد غير صحيح")
+    if born_on and (date.today() - born_on).days < 18*365 and not guardian_phone.strip():
+        raise HTTPException(422,"هاتف ولي الأمر إلزامي بالنسبة للقاصر")
+    match=db.scalar(select(Learner).where(Learner.full_name==full_name.strip()[:180],Learner.born_on==born_on))
+    if match: raise HTTPException(409,"توجد بطاقة مشابهة؛ راجعها لتجنب التكرار")
+    l=Learner(full_name=full_name.strip()[:180],gender=gender[:20],born_on=born_on,birthplace=birthplace[:120],
+      phone=phone[:45],address=address[:240],guardian_name=guardian_name[:180],
+      guardian_relationship=guardian_relationship[:70],guardian_phone=guardian_phone[:45])
+    db.add(l);db.flush()
+    en=Enrollment(learner_id=l.id,year_id=year_id,center_id=t.center_id,track_id=t.id)
+    db.add(en);db.flush();log(db,user,"enroll","enrollment",en.id);db.commit()
+    return redirect(f"/platform/learners/{en.id}")
+
+@app.get("/platform/learners/{enrollment_id}",response_class=HTMLResponse)
+def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    en=learner_scope(db,user,enrollment_id);l=db.get(Learner,en.learner_id);csrf=request.session["csrf"]
+    atts=db.scalars(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
+                    .where(Attendance.enrollment_id==en.id).order_by(SessionDay.held_on.desc())).all()
+    pending=sum(a.status=="absent" and a.permit_id is None for a,s in atts)
+    historic=sum(a.status=="absent" for a,s in atts)
+    days=len({s.held_on for a,s in atts if a.status=="absent"})
+    state='<span class="danger">أحمر: غياب معلق</span>' if pending else '<span class="good">أخضر: الغياب مسوى</span>'
+    if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
+    body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
+    if user["role"] in ("admin","coordinator"):
+        body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
+    arows=[[e(s.held_on),e(a.status),e("مغطى بإذن" if a.permit_id else "معلّق" if a.status=="absent" else "—")] for a,s in atts]
+    body+=f'<section><h2>سجل الحضور والغياب</h2>{table(["التاريخ","الحالة","إذن الدخول"],arows)}</section>'
+    if user["role"]=="coordinator" and pending:
+        body+='<section><h2>إذن دخول معلل يغطي الغيابات المعلقة</h2>'+form(f"/platform/learners/{en.id}/permit",csrf,
+          area("reason","التبرير الإلزامي"),"إصدار إذن الدخول")+'</section>'
+    results=transcript(db,en)
+    items=[[e(k),e(v) if v is not None else "غير مكتمل"] for k,v in results.items()]
+    body+='<section><h2>المعدلات المعتمدة (من 20)</h2>'+table(["المادة / المعدل","النقطة"],items)+'</section>'
+    return page(request,user,"ملف المستفيد",body)
+
+@app.post("/platform/learners/{enrollment_id}/permit")
+def grant_permit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf"),reason:str=Form(),
+                 db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);en=learner_scope(db,user,enrollment_id);coordinator(user,en.center_id)
+    if len(reason.strip())<6:raise HTTPException(422,"يجب كتابة سبب واضح لإذن الدخول")
+    pending=db.scalars(select(Attendance).where(Attendance.enrollment_id==en.id,Attendance.status=="absent",
+                                                 Attendance.permit_id.is_(None))).all()
+    if not pending:raise HTTPException(409,"لا توجد غيابات معلقة")
+    p=Permit(learner_id=en.learner_id,center_id=en.center_id,reason=reason.strip()[:2000],issued_by=user["name"])
+    db.add(p);db.flush()
+    for a in pending:a.permit_id=p.id
+    log(db,user,"issue_permit","permit",p.id,reason);db.commit()
+    return redirect(f"/platform/learners/{en.id}")
+
+def overlaps(first:Slot, second:Slot) -> bool:
+    if first.weekday!=second.weekday:return False
+    if first.specific_date and second.specific_date and first.specific_date!=second.specific_date:return False
+    if first.specific_date and first.specific_date.weekday()!=second.weekday:return False
+    if second.specific_date and second.specific_date.weekday()!=first.weekday:return False
+    return first.starts_at < second.ends_at and second.starts_at < first.ends_at
+
+def slot_conflict(db:Session,slot:Slot):
+    query=select(Slot).where(Slot.staff_id==slot.staff_id,Slot.year_id==slot.year_id,
+                            Slot.weekday==slot.weekday,Slot.canceled.is_(False))
+    for other in db.scalars(query).all():
+        if other.id!=slot.id and overlaps(other,slot):return other
+    return None
+
+@app.get("/platform/schedule",response_class=HTMLResponse)
+def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    csrf=request.session["csrf"];ensure_data(db)
+    slots=[s for s in db.scalars(select(Slot).order_by(Slot.weekday,Slot.starts_at)).all()
+           if center_allowed(user,s.center_id) and (user["role"] in ("admin","coordinator") or s.staff_id==user["id"])]
+    rows=[]
+    for s in slots:
+        c=db.get(Center,s.center_id);t=db.get(Track,s.track_id);staff=db.get(Staff,s.staff_id)
+        action=form("/platform/sessions",csrf,field("slot_id","رقم الحصة",value=s.id)+field("held_on","التاريخ","date"),"فتح الحصة") if not s.canceled else "ملغاة"
+        rows.append([e(c.name),e(t.name),e(s.subject),e("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()[s.weekday]),
+                     e(s.starts_at+"–"+s.ends_at),e(staff.full_name),action])
+    body='<section><h2>الجدول الأسبوعي وحصص الاستثناء</h2>'+table(["المركز","المسلك","المادة","اليوم","الساعة","المؤطر","العمل"],rows)+'</section>'
+    if user["role"]=="coordinator":
+        staff=db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
+        body='<section><h2>برمجة حصة · منع التعارض آليًا عبر المركزين</h2>'+form("/platform/schedule",csrf,
+          choose("track_id","مسلك المركز",tracks_options(db,user))+
+          choose("staff_id","المؤطر",[(s.id,s.full_name) for s in staff if s.role in ("instructor","educator")])+
+          choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
+          choose("weekday","اليوم",list(enumerate("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split())))+
+          field("starts_at","من","time")+field("ends_at","إلى","time")+
+          field("specific_date","تاريخ استثنائي (اتركه فارغًا للجدول الأسبوعي)","date",False)+
+          area("reason","مبرر البرمجة / التعديل"),"إضافة الحصة")+'</section><section><h2>عطلة أو إغلاق استثنائي</h2>'+
+          form("/platform/closures",csrf,choose("center_id","المركز",center_options(db,user))+
+          field("closed_on","اليوم المغلق","date")+area("reason","سبب الإغلاق"),"إلغاء حصص هذا اليوم")+'</section>'+body
+    return page(request,user,"الحصص والجداول",body)
+
+@app.post("/platform/schedule")
+def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(),staff_id:int=Form(),
+       subject:str=Form(),weekday:int=Form(),starts_at:str=Form(),ends_at:str=Form(),
+       specific_date:date|None=Form(None),reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    track=db.get(Track,track_id);staff=db.get(Staff,staff_id)
+    if not track or not staff:raise HTTPException(422,"المسلك أو المؤطر غير موجود")
+    coordinator(user,track.center_id)
+    if staff.role not in ("instructor","educator") or subject not in ("مهني",*SUBJECTS):raise HTTPException(422,"المادة غير صحيحة")
+    if (staff.role=="instructor" and subject!="مهني") or (staff.role=="educator" and subject not in SUBJECTS):raise HTTPException(422,"عدم تطابق التخصص")
+    if not any(a.center_id==track.center_id and a.track_id==track.id and a.subject==("" if subject=="مهني" else subject)
+               for a in db.scalars(select(Assignment).where(Assignment.staff_id==staff_id)).all()):
+        raise HTTPException(403,"هذا الموظف غير مكلف بهذا المسلك والمادة")
+    if not 0<=weekday<=6 or not "00:00"<=starts_at<ends_at<="23:59" or (specific_date and specific_date.weekday()!=weekday):
+        raise HTTPException(422,"اليوم أو التوقيت غير صحيح")
+    if len(reason.strip())<5:raise HTTPException(422,"التبرير إلزامي لتغيير الجدولة")
+    slot=Slot(year_id=track.year_id,center_id=track.center_id,track_id=track.id,staff_id=staff_id,
+              subject=subject,kind="professional" if subject=="مهني" else "pedagogical",
+              weekday=weekday,starts_at=starts_at,ends_at=ends_at,specific_date=specific_date,change_reason=reason.strip()[:1000])
+    other=slot_conflict(db,slot)
+    if other:raise HTTPException(409,f"تعارض: المؤطر مرتبط بالحصة رقم {other.id} في الوقت نفسه.")
+    db.add(slot);db.flush();log(db,user,"schedule","slot",slot.id,reason)
+    db.add(Notification(staff_id=staff_id,message=f"حصة جديدة: {subject}، يوم {weekday} الساعة {starts_at}",target="/platform/schedule"))
+    db.commit();return redirect("/platform/schedule")
+
+@app.post("/platform/closures")
+def create_closure(request:Request,token:str=Form(alias="_csrf"),center_id:int=Form(),closed_on:date=Form(),
+        reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);coordinator(user,center_id)
+    if len(reason.strip())<6:raise HTTPException(422,"سبب الإغلاق إلزامي")
+    active=db.scalars(select(SessionDay).join(Slot,SessionDay.slot_id==Slot.id).where(
+        Slot.center_id==center_id,SessionDay.held_on==closed_on)).all()
+    for session in active:
+        if db.scalar(select(Attendance).where(Attendance.session_id==session.id)):
+            raise HTTPException(409,"لا يمكن إلغاء حصة سُجل فيها حضور؛ يلزم معالجة السجل أولًا")
+    db.add(Closure(center_id=center_id,closed_on=closed_on,reason=reason.strip()[:1000],actor=user["name"]))
+    for session in active:session.status="canceled"
+    try:log(db,user,"closure","center",center_id,reason);db.commit()
+    except IntegrityError:db.rollback();raise HTTPException(409,"الإغلاق مسجل سابقًا")
+    return redirect("/platform/schedule")
+
+@app.post("/platform/sessions")
+def open_session(request:Request,token:str=Form(alias="_csrf"),slot_id:int=Form(),held_on:date=Form(),
+                 db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    slot=slot_scope(db,user,slot_id)
+    if slot.canceled or held_on.weekday()!=slot.weekday or (slot.specific_date and slot.specific_date!=held_on):
+        raise HTTPException(422,"الحصة ملغاة أو التاريخ لا يطابق الجدول")
+    if db.scalar(select(Closure).where(Closure.center_id==slot.center_id,Closure.closed_on==held_on)):
+        raise HTTPException(409,"هذا اليوم مغلق؛ لا يُحتسب الغياب")
+    item=db.scalar(select(SessionDay).where(SessionDay.slot_id==slot.id,SessionDay.held_on==held_on))
+    if not item:
+        if user["id"]!=slot.staff_id and user["role"] not in ("admin","coordinator"):
+            raise HTTPException(403)
+        item=SessionDay(slot_id=slot.id,held_on=held_on)
+        db.add(item);db.flush();log(db,user,"open_session","session",item.id);db.commit()
+    return redirect(f"/platform/sessions/{item.id}")
+
+@app.get("/platform/sessions/{session_id}",response_class=HTMLResponse)
+def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    s=db.get(SessionDay,session_id)
+    if not s:raise HTTPException(404)
+    slot=slot_scope(db,user,s.slot_id)
+    enrollments=db.scalars(select(Enrollment).where(Enrollment.year_id==slot.year_id,
+       Enrollment.center_id==slot.center_id,Enrollment.track_id==slot.track_id,Enrollment.status=="active")).all()
+    marks={a.enrollment_id:a for a in db.scalars(select(Attendance).where(Attendance.session_id==s.id)).all()}
+    rows=[]
+    for en in enrollments:
+        l=db.get(Learner,en.learner_id)
+        pend=db.scalar(select(func.count()).select_from(Attendance).where(Attendance.enrollment_id==en.id,
+                    Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
+        discipline=disciplinary_status(db,en,s.held_on)
+        state='<span class="danger">إقصاء تأديبي</span>' if discipline else '<span class="danger">غياب سابق معلق</span>' if pend else '<span class="good">مسموح بالدخول</span>'
+        old=marks.get(en.id)
+        action="—"
+        if user["id"]==slot.staff_id and s.status!="canceled" and not discipline:
+            action=form(f"/platform/sessions/{s.id}/attendance",request.session["csrf"],
+                f'<input type="hidden" name="enrollment_id" value="{en.id}">'+
+                choose("status","الحضور",[("present","حاضر"),("absent","غائب"),("late","متأخر")],old.status if old else None),
+                "تسجيل")
+        rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',state,
+           e(old.status if old else "لم يسجل"),action])
+    report=db.scalar(select(SessionReport).where(SessionReport.session_id==s.id))
+    body=f'<section><h2>{e(slot.subject)} · {e(s.held_on)}</h2><p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>{table(["المستفيد","التنبيه","الحضور","الإجراء"],rows)}</section>'
+    if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
+        body+='<section><h2>تقرير الحصة الواحدة</h2>'+form(f"/platform/sessions/{s.id}/report",request.session["csrf"],
+            field("subject","عنوان التقرير",value=report.subject if report else slot.subject)+
+            area("objectives","الأهداف")+area("activities","الأنشطة")+area("results","النتائج والمهارات المكتسبة")+
+            area("challenges","الصعوبات")+area("recommendations","التوصيات"),"حفظ مسودة التقرير")+'</section>'
+        if report:body+=f'<section>{form(f"/platform/reports/{report.id}/submit",request.session["csrf"],"","إرسال للمراجعة")}</section>'
+    if report:
+        body+=f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p><p>{e(report.review_comment)}</p></section>'
+    return page(request,user,"تدبير الحصة",body)
+
+def absence_notice(db:Session,en:Enrollment,held_on:date):
+    atts=db.scalars(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
+                    .where(Attendance.enrollment_id==en.id,Attendance.status=="absent")).all()
+    monday=held_on-timedelta(days=held_on.weekday())
+    first=held_on.replace(day=1)
+    for label,cut,limit_sessions,limit_days in (
+         ("weekly",monday,3,2),("monthly",first,8,5)):
+        if label=="weekly":matched=[s for a,s in atts if monday<=s.held_on<=monday+timedelta(days=6)]
+        else:matched=[s for a,s in atts if first<=s.held_on and s.held_on.year==first.year and s.held_on.month==first.month]
+        if len(matched)<limit_sessions and len({s.held_on for s in matched})<limit_days:continue
+        period=f"{label}:{cut.isoformat()}"
+        exists=db.scalar(select(Notice).where(Notice.enrollment_id==en.id,Notice.kind=="absence",Notice.period_key==period))
+        if not exists:
+            text=f"إشعار بخصوص الغياب المتكرر: {len(matched)} حصص في {len(set(s.held_on for s in matched))} أيام خلال {label}."
+            n=Notice(enrollment_id=en.id,kind="absence",period_key=period,body=text,status="draft")
+            db.add(n);db.flush();notify(db,en.center_id,f"مسودة إشعار غياب متكرر للمستفيد رقم {en.learner_id}",f"/platform/notices")
+
+@app.post("/platform/sessions/{session_id}/attendance")
+def mark_attendance(session_id:int,request:Request,token:str=Form(alias="_csrf"),
+                    enrollment_id:int=Form(),status:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    s=db.get(SessionDay,session_id)
+    if not s:raise HTTPException(404)
+    slot=slot_scope(db,user,s.slot_id,for_write=True)
+    en=learner_scope(db,user,enrollment_id)
+    if en.center_id!=slot.center_id or en.track_id!=slot.track_id or en.year_id!=slot.year_id:
+        raise HTTPException(403,"المستفيد غير مسجل في هذه الحصة")
+    if status not in ("present","absent","late") or s.status=="canceled" or disciplinary_status(db,en,s.held_on):
+        raise HTTPException(422,"لا يجوز تسجيل الغياب لحصة ملغاة أو أثناء الإقصاء التأديبي")
+    a=db.scalar(select(Attendance).where(Attendance.session_id==s.id,Attendance.enrollment_id==en.id))
+    if not a:a=Attendance(session_id=s.id,enrollment_id=en.id,status=status,recorded_by=user["name"]);db.add(a)
+    else:
+        if a.status=="absent" and a.permit_id and status!="absent":
+            raise HTTPException(409,"تعديل غياب تمت تسويته يتطلب مراجعة المنسق")
+        a.status=status
+        if status=="absent":a.permit_id=None
+    db.flush()
+    if status=="absent":absence_notice(db,en,s.held_on)
+    log(db,user,"attendance","session",s.id);db.commit()
+    return redirect(f"/platform/sessions/{s.id}")
