@@ -64,8 +64,8 @@ def actor(request: Request, db: Session = Depends(get_db)):
         return {"role": "admin", "name": "إدارة الجمعية", "id": None, "assignments": []}
     uid = request.session.get("staff_id")
     user = db.get(Staff, uid) if isinstance(uid, int) else None
-    if not user or not user.enabled:
-        raise HTTPException(403, "الحساب معطل أو انتهت صلاحية الجلسة.")
+    if not user or not user.enabled or user.session_version != request.session.get("session_version"):
+        raise HTTPException(403, "الحساب معطل أو انتهت صلاحية الجلسة. يرجى إعادة تسجيل الدخول.")
     return {"role": user.role, "name": user.full_name, "id": user.id,
             "assignments": db.scalars(select(Assignment).where(Assignment.staff_id == user.id)).all()}
 
@@ -144,11 +144,14 @@ def page(request, user, title, body):
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
         ("التنبيهات", "/platform/notifications"),
     ]
+    if user["role"] != "admin":
+        menu.append(("تغيير كلمة المرور", "/platform/password"))
     if user["role"] in ("admin","coordinator"):
         menu.append(("استيراد Excel", "/platform/import"))
         menu.append(("كشوف النقط PDF", "/platform/exports/grades"))
     if user["role"] == "admin":
         menu.insert(1, ("الموظفون", "/platform/staff"))
+        menu.append(("إعدادات التنبيه", "/platform/settings"))
         menu.append(("السجل الإداري", "/platform/audit"))
         menu.append(("التقارير القديمة", "/reports"))
     nav = "".join(f'<a href="{url}">{e(label)}</a>' for label, url in menu)
@@ -217,7 +220,8 @@ def years_page(request:Request, db:Session=Depends(get_db), user=Depends(actor))
     yform=form("/platform/years",csrf,field("label","السنة التكوينية",value="2026/2027")+field("starts_on","البداية","date")+field("ends_on","النهاية","date"),"إنشاء سنة جديدة من الصفر")
     tform=form("/platform/tracks",csrf,choose("year_id","السنة",[(y.id,y.label) for y in years])+choose("center_id","المركز",center_options(db,user))+field("name","اسم المسلك"),"إضافة مسلك")
     yrows=[[e(y.label),e(y.starts_on),e(y.ends_on),e("مؤرشفة" if y.archived else "مفعلة" if y.active else "غير مفعلة"),
-        form(f"/platform/years/{y.id}/activate",csrf,"","تفعيل") if not y.archived else "—"] for y in years]
+        (form(f"/platform/years/{y.id}/activate",csrf,"","تفعيل")+
+         form(f"/platform/years/{y.id}/archive",csrf,area("reason","مبرر الأرشفة"),"أرشفة")) if not y.archived else "مؤرشفة"] for y in years]
     trows=[[e(db.get(Year,t.year_id).label),e(db.get(Center,t.center_id).name),e(t.name)] for t in tracks]
     return page(request,user,"السنوات والمسالك",f"<section><h2>السنوات</h2>{yform}{table(['السنة','من','إلى','الحالة','الإجراء'],yrows)}</section><section><h2>المسالك المستقلة لكل مركز</h2>{tform}{table(['السنة','المركز','المسلك'],trows)}</section>")
 
@@ -238,6 +242,17 @@ def year_activate(year_id:int,request:Request,token:str=Form(alias="_csrf"),db:S
     if not y or y.archived:raise HTTPException(422,"السنة غير متاحة")
     for other in db.scalars(select(Year)).all():other.active=False
     y.active=True;log(db,user,"activate","year",y.id);db.commit()
+    return redirect("/platform/years")
+
+@app.post("/platform/years/{year_id}/archive")
+def year_archive(year_id:int,request:Request,token:str=Form(alias="_csrf"),reason:str=Form(),
+                 db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    if len(reason.strip())<6:raise HTTPException(422,"يجب توضيح سبب الأرشفة")
+    year=db.get(Year,year_id)
+    if not year or year.archived:raise HTTPException(409,"السنة غير متاحة للأرشفة")
+    year.active=False;year.archived=True
+    log(db,user,"archive","year",year.id,reason);db.commit()
     return redirect("/platform/years")
 
 @app.post("/platform/tracks")
@@ -284,7 +299,7 @@ def change_staff_password(staff_id:int,request:Request,token:str=Form(alias="_cs
     require_role(user,"admin");assert_csrf(request,token)
     s=db.get(Staff,staff_id)
     if not s:raise HTTPException(404)
-    s.password_hash=hash_password(password);log(db,user,"password_reset","staff",s.id);db.commit()
+    s.password_hash=hash_password(password);s.session_version+=1;log(db,user,"password_reset","staff",s.id);db.commit()
     return redirect("/platform/staff")
 
 @app.post("/platform/assign")
@@ -554,8 +569,12 @@ def absence_notice(db:Session,en:Enrollment,held_on:date):
                     .where(Attendance.enrollment_id==en.id,Attendance.status=="absent")).all()
     monday=held_on-timedelta(days=held_on.weekday())
     first=held_on.replace(day=1)
+    from platform_v2_models import Setting
+    current={x.key:x.value for x in db.scalars(select(Setting).where(
+        Setting.key.in_(("weekly_sessions","weekly_days","monthly_sessions","monthly_days")))).all()}
     for label,cut,limit_sessions,limit_days in (
-         ("weekly",monday,3,2),("monthly",first,8,5)):
+         ("weekly",monday,current.get("weekly_sessions",3),current.get("weekly_days",2)),
+         ("monthly",first,current.get("monthly_sessions",8),current.get("monthly_days",5))):
         if label=="weekly":matched=[s for a,s in atts if monday<=s.held_on<=monday+timedelta(days=6)]
         else:matched=[s for a,s in atts if first<=s.held_on and s.held_on.year==first.year and s.held_on.month==first.month]
         if len(matched)<limit_sessions and len({s.held_on for s in matched})<limit_days:continue
@@ -1136,3 +1155,57 @@ def audit_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     rows=db.scalars(select(Audit).order_by(Audit.id.desc()).limit(400)).all()
     return page(request,user,"سجل العمليات",'<section>'+table(["التاريخ","المسؤول","العملية","المورد","معرف","التعليل"],[
         [e(a.created_at),e(a.actor),e(a.action),e(a.resource),e(a.resource_id),e(a.reason)] for a in rows])+'</section>')
+
+from platform_v2_models import Setting
+
+@app.get("/platform/settings",response_class=HTMLResponse)
+def settings_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin")
+    values={x.key:x.value for x in db.scalars(select(Setting)).all()}
+    fields=field("weekly_sessions","عدد حصص الغياب الأسبوعية","number",value=values.get("weekly_sessions",3),extra='min="1" max="100"')+\
+      field("weekly_days","عدد أيام الغياب الأسبوعية","number",value=values.get("weekly_days",2),extra='min="1" max="7"')+\
+      field("monthly_sessions","عدد حصص الغياب الشهرية","number",value=values.get("monthly_sessions",8),extra='min="1" max="200"')+\
+      field("monthly_days","عدد أيام الغياب الشهرية","number",value=values.get("monthly_days",5),extra='min="1" max="31"')+\
+      area("reason","سبب التعديل")
+    return page(request,user,"إعدادات التنبيه",'<section><h2>عتبات الغياب القابلة للتعديل مع تسجيل السبب</h2>'+
+                form("/platform/settings",request.session["csrf"],fields,"حفظ العتبات")+'</section>')
+
+@app.post("/platform/settings")
+def update_settings(request:Request,token:str=Form(alias="_csrf"),weekly_sessions:int=Form(),
+         weekly_days:int=Form(),monthly_sessions:int=Form(),monthly_days:int=Form(),
+         reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    vals={"weekly_sessions":weekly_sessions,"weekly_days":weekly_days,
+          "monthly_sessions":monthly_sessions,"monthly_days":monthly_days}
+    if not (1<=weekly_sessions<=100 and 1<=weekly_days<=7 and
+            1<=monthly_sessions<=200 and 1<=monthly_days<=31) or len(reason.strip())<6:
+        raise HTTPException(422,"العتبات أو سبب التعديل غير صحيحة")
+    previous={x.key:x.value for x in db.scalars(select(Setting)).all()}
+    for key,value in vals.items():
+        record=db.get(Setting,key)
+        if record:record.value=value;record.updated_at=now()
+        else:db.add(Setting(key=key,value=value))
+    log(db,user,"update_thresholds","settings",0,
+        f"before={previous};after={vals};reason={reason[:500]}")
+    db.commit();return redirect("/platform/settings")
+
+@app.get("/platform/password",response_class=HTMLResponse)
+def own_password_page(request:Request,user=Depends(actor)):
+    require_role(user,"coordinator","instructor","educator")
+    form_html=form("/platform/password",request.session["csrf"],
+       field("current_password","كلمة المرور الحالية","password")+
+       field("new_password","كلمة المرور الجديدة (12 حرفًا على الأقل)","password"),"تغيير كلمة المرور")
+    return page(request,user,"تغيير كلمة المرور",'<section>'+form_html+'</section>')
+
+@app.post("/platform/password")
+def own_password_change(request:Request,token:str=Form(alias="_csrf"),
+    current_password:str=Form(),new_password:str=Form(),
+    db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"coordinator","instructor","educator");assert_csrf(request,token)
+    staff=db.get(Staff,user["id"])
+    if not verify_password(current_password,staff.password_hash):
+        raise HTTPException(403,"كلمة المرور الحالية غير صحيحة")
+    staff.password_hash=hash_password(new_password);staff.session_version+=1
+    request.session["session_version"]=staff.session_version
+    log(db,user,"password_change","staff",staff.id)
+    db.commit();return redirect("/platform")
