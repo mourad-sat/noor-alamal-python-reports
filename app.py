@@ -111,6 +111,13 @@ def verify_password(password: str, encoded: str) -> bool:
 def auth_required(request: Request):
     if not request.session.get('authenticated'):
         raise HTTPException(status_code=303, headers={'Location': '/login'}, detail='Authentication required')
+    # The legacy report/absence endpoints are intentionally restricted to admin.
+    if request.session.get('role', 'admin') != 'admin':
+        raise HTTPException(status_code=403, detail='This page is restricted to administration')
+
+def logged_in_required(request: Request):
+    if not request.session.get('authenticated'):
+        raise HTTPException(status_code=303, headers={'Location': '/login'}, detail='Authentication required')
 
 def check_csrf(request: Request, token: str):
     if not token or not hmac.compare_digest(token, request.session.get('csrf', '')):
@@ -163,22 +170,32 @@ def login_page(request: Request):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
     if request.session.get('authenticated'):
-        return RedirectResponse('/', status_code=303)
+        return RedirectResponse('/platform' if request.session.get('role') != 'admin' else '/', status_code=303)
     return render(request, 'login.html', page='login')
 
 @app.post('/login')
-def login(request: Request, username: Annotated[str, Form()], password: Annotated[str, Form()]):
+def login(request: Request, username: Annotated[str, Form()], password: Annotated[str, Form()],
+          db: Session = Depends(get_db)):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
-    if not (hmac.compare_digest(username, ADMIN_USERNAME) and verify_password(password, ADMIN_PASSWORD_HASH)):
+    is_admin = (hmac.compare_digest(username, ADMIN_USERNAME) and
+                verify_password(password, ADMIN_PASSWORD_HASH))
+    staff = None
+    if not is_admin:
+        from platform_v2 import authenticate_staff
+        staff = authenticate_staff(db, username, password)
+    if not is_admin and staff is None:
         return render(request, 'login.html', page='login', error='اسم المستخدم أو كلمة المرور غير صحيحين.')
     request.session.clear()
     request.session['authenticated'] = True
     request.session['csrf'] = secrets.token_urlsafe(32)
-    return RedirectResponse('/', status_code=303)
+    request.session['role'] = 'admin' if is_admin else staff.role
+    if staff:
+        request.session['staff_id'] = staff.id
+    return RedirectResponse('/' if is_admin else '/platform', status_code=303)
 
 @app.post('/logout')
-def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None = Depends(auth_required)):
+def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None = Depends(logged_in_required)):
     check_csrf(request, token)
     request.session.clear()
     return RedirectResponse('/login', status_code=303)
@@ -375,3 +392,6 @@ def export_absences(_: None = Depends(auth_required), db: Session = Depends(get_
     items = db.scalars(select(Absence).order_by(Absence.absence_date.desc()).limit(20000)).all()
     return make_csv('noor-absences.csv', ['الرقم', 'التاريخ', 'اسم المستفيد', 'المجموعة', 'سبب الغياب', 'الحالة', 'ملاحظات'], [
         [a.id, a.absence_date, a.learner_name, a.group_name, a.reason, 'مبرر' if a.justified else 'غير مبرر', a.notes] for a in items])
+
+# Load the role-restricted second-generation portal after core models and routes.
+import platform_v2  # noqa: E402,F401
