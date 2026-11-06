@@ -440,7 +440,7 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
     body='<section><h2>الجدول الأسبوعي وحصص الاستثناء</h2>'+table(["المركز","المسلك","المادة","اليوم","الساعة","المؤطر","العمل"],rows)+'</section>'
     if user["role"]=="coordinator":
         staff=db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
-        body='<section><h2>برمجة حصة · منع التعارض آليًا عبر المركزين</h2>'+form("/platform/schedule",csrf,
+        body=('<section><h2>برمجة حصة · منع التعارض آليًا عبر المركزين</h2>'+form("/platform/schedule",csrf,
           choose("track_id","مسلك المركز",tracks_options(db,user))+
           choose("staff_id","المؤطر",[(s.id,s.full_name) for s in staff if s.role in ("instructor","educator")])+
           choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
@@ -449,7 +449,7 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
           field("specific_date","تاريخ استثنائي (اتركه فارغًا للجدول الأسبوعي)","date",False)+
           area("reason","مبرر البرمجة / التعديل"),"إضافة الحصة")+'</section><section><h2>عطلة أو إغلاق استثنائي</h2>'+
           form("/platform/closures",csrf,choose("center_id","المركز",center_options(db,user))+
-          field("closed_on","اليوم المغلق","date")+area("reason","سبب الإغلاق"),"إلغاء حصص هذا اليوم")+'</section>'+body
+          field("closed_on","اليوم المغلق","date")+area("reason","سبب الإغلاق"),"إلغاء حصص هذا اليوم")+'</section>'+body)
     return page(request,user,"الحصص والجداول",body)
 
 @app.post("/platform/schedule")
