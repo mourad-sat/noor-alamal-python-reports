@@ -859,3 +859,275 @@ def review_correction(change_id:int,request:Request,token:str=Form(alias="_csrf"
         log(db,user,"approve_correction","grade",g.id,f"old={old};new={g.score};reason={change.reason}")
     change.status=decision;change.reviewed_by=user["name"]
     db.commit();return redirect("/platform/grades")
+
+
+@app.get("/platform/discipline",response_class=HTMLResponse)
+def discipline_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    csrf=request.session["csrf"]
+    incidents=db.scalars(select(Incident).order_by(Incident.id.desc()).limit(400)).all()
+    irows=[]
+    for inc in incidents:
+        en=db.get(Enrollment,inc.enrollment_id)
+        if not en or not center_allowed(user,en.center_id):continue
+        if user["role"] in ("instructor","educator") and inc.staff_id!=user["id"]:continue
+        action=""
+        if user["role"]=="coordinator" and inc.status=="pending":
+            action=form(f"/platform/incidents/{inc.id}/review",csrf,
+                    '<input type="hidden" name="decision" value="approved">',"اعتماد")
+            action+=form(f"/platform/incidents/{inc.id}/review",csrf,
+                    '<input type="hidden" name="decision" value="rejected">'+area("comment","سبب الرفض"),"رفض")
+        irows.append([e(db.get(Learner,en.learner_id).full_name),e(inc.kind),e(inc.description),
+                      e(inc.educational_action),e(inc.status),action])
+    body='<section><h2>الملاحظات السلوكية والإجراءات التربوية</h2>'+table(["المستفيد","النوع","التفاصيل","إجراء تربوي","الحالة","مراجعة المنسق"],irows)+'</section>'
+    if user["role"] in ("instructor","educator"):
+        body='<section><h2>تسجيل سلوك إيجابي أو سلبي (يتطلب مصادقة)</h2>'+form("/platform/incidents",csrf,
+            field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
+            choose("kind","النوع",[("positive","سلوك إيجابي"),("negative","سلوك سلبي")])+
+            area("description","وصف الواقعة")+area("educational_action","الإجراء التربوي البسيط"),"إرسال للمراجعة")+'</section>'+body
+    decisions=db.scalars(select(Discipline).order_by(Discipline.id.desc()).limit(400)).all()
+    drows=[]
+    for d in decisions:
+        en=db.get(Enrollment,d.enrollment_id)
+        if not en or not center_allowed(user,en.center_id):continue
+        if user["role"] in ("instructor","educator"):continue
+        action=""
+        if user["role"]=="admin" and d.status=="pending_admin":
+            action=form(f"/platform/discipline/{d.id}/approve",csrf,
+                '<input type="hidden" name="decision" value="effective">',"مصادقة إدارة الجمعية")
+            action+=form(f"/platform/discipline/{d.id}/approve",csrf,
+                '<input type="hidden" name="decision" value="rejected">'+area("reason","سبب الرفض"),"رفض")
+        if user["role"]=="coordinator" and d.status=="effective":
+            action+=form(f"/platform/discipline/{d.id}/early-request",csrf,
+                        area("reason","سبب طلب الرفع المبكر"),"طلب رفع مبكر")
+            if d.excluded_through and date.today()>d.excluded_through and not d.return_authorized:
+                action+=form(f"/platform/discipline/{d.id}/return",csrf,
+                           area("reason","مبرر السماح بالعودة"),"ترخيص العودة بعد انتهاء المدة")
+        if user["role"]=="admin" and d.status=="early_pending":
+            action+=form(f"/platform/discipline/{d.id}/early-review",csrf,
+                '<input type="hidden" name="decision" value="approved">'+area("reason","تعليل قرار الإدارة"),"قبول الرفع")
+            action+=form(f"/platform/discipline/{d.id}/early-review",csrf,
+                '<input type="hidden" name="decision" value="rejected">'+area("reason","تعليل الرفض"),"رفض الرفع")
+        drows.append([e(db.get(Learner,en.learner_id).full_name),e(d.decision),e(d.minutes),
+                      e(f"{d.excluded_from} — {d.excluded_through}"),e(d.status),action])
+    body+='<section><h2>قرارات المجلس التأديبي (غير نافذة قبل اعتماد الإدارة)</h2>'+table(["المستفيد","القرار","المحضر","مدة الإقصاء","الحالة","الإجراء"],drows)+'</section>'
+    if user["role"]=="coordinator":
+        body='<section><h2>إحالة قرار مجلس تأديبي لإدارة الجمعية</h2>'+form("/platform/discipline",csrf,
+             field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
+             area("decision","التوصية / القرار")+area("minutes","محضر المجلس وأسبابه")+
+             field("excluded_from","بداية الإقصاء إن وجد","date",False)+
+             field("excluded_through","نهاية الإقصاء إن وجدت","date",False),"إرسال للمصادقة")+'</section>'+body
+    return page(request,user,"السلوك والانضباط",body)
+
+@app.post("/platform/incidents")
+def record_incident(request:Request,token:str=Form(alias="_csrf"),enrollment_id:int=Form(),
+       kind:str=Form(),description:str=Form(),educational_action:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"instructor","educator");assert_csrf(request,token)
+    en=learner_scope(db,user,enrollment_id)
+    if kind not in ("positive","negative") or len(description.strip())<5:raise HTTPException(422,"الوصف أو النوع غير صحيح")
+    inc=Incident(enrollment_id=en.id,staff_id=user["id"],kind=kind,description=description.strip()[:4000],
+                 educational_action=educational_action.strip()[:1200])
+    db.add(inc);db.flush()
+    notify(db,en.center_id,"ملاحظة سلوكية تنتظر المصادقة","/platform/discipline")
+    log(db,user,"incident","incident",inc.id);db.commit();return redirect("/platform/discipline")
+
+@app.post("/platform/incidents/{incident_id}/review")
+def review_incident(incident_id:int,request:Request,token:str=Form(alias="_csrf"),decision:str=Form(),
+         comment:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);inc=db.get(Incident,incident_id)
+    if not inc or inc.status!="pending" or decision not in ("approved","rejected"):raise HTTPException(409)
+    en=db.get(Enrollment,inc.enrollment_id);coordinator(user,en.center_id)
+    if decision=="rejected" and len(comment.strip())<5:raise HTTPException(422,"سبب الرفض إلزامي")
+    inc.status=decision;inc.review_comment=comment.strip()[:2000]
+    db.add(Notification(staff_id=inc.staff_id,message=f"مراجعة الملاحظة السلوكية: {decision}",target="/platform/discipline"))
+    log(db,user,decision,"incident",inc.id,comment);db.commit();return redirect("/platform/discipline")
+
+@app.post("/platform/discipline")
+def new_discipline(request:Request,token:str=Form(alias="_csrf"),enrollment_id:int=Form(),
+         decision:str=Form(),minutes:str=Form(),excluded_from:date|None=Form(None),
+         excluded_through:date|None=Form(None),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);en=learner_scope(db,user,enrollment_id);coordinator(user,en.center_id)
+    if len(decision.strip())<5 or len(minutes.strip())<10:
+        raise HTTPException(422,"القرار والمحضر المعلل إلزاميان")
+    if (excluded_from is None)!=(excluded_through is None) or (excluded_from and excluded_from>excluded_through):
+        raise HTTPException(422,"حددا مدة الإقصاء معًا أو اتركاها فارغة")
+    d=Discipline(enrollment_id=en.id,decision=decision.strip()[:4000],minutes=minutes.strip()[:8000],
+        excluded_from=excluded_from,excluded_through=excluded_through,status="pending_admin")
+    db.add(d);db.flush();log(db,user,"council_submission","discipline",d.id);db.commit()
+    return redirect("/platform/discipline")
+
+@app.post("/platform/discipline/{discipline_id}/approve")
+def admin_discipline(discipline_id:int,request:Request,token:str=Form(alias="_csrf"),
+        decision:str=Form(),reason:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    d=db.get(Discipline,discipline_id)
+    if not d or d.status!="pending_admin" or decision not in ("effective","rejected"):raise HTTPException(409)
+    if decision=="rejected" and len(reason.strip())<5:raise HTTPException(422,"سبب الرفض إلزامي")
+    d.status=decision;d.approved_by=user["name"]
+    en=db.get(Enrollment,d.enrollment_id)
+    if decision=="effective":
+        n=Notice(enrollment_id=en.id,kind="discipline",body=d.decision,status="draft")
+        db.add(n)
+        notify(db,en.center_id,"قرار تأديبي نافذ ينتظر إشعارًا ورقيًا","/platform/notices")
+    log(db,user,decision,"discipline",d.id,reason);db.commit()
+    return redirect("/platform/discipline")
+
+@app.post("/platform/discipline/{discipline_id}/early-request")
+def early_request(discipline_id:int,request:Request,token:str=Form(alias="_csrf"),reason:str=Form(),
+          db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);d=db.get(Discipline,discipline_id)
+    if not d:raise HTTPException(404)
+    en=db.get(Enrollment,d.enrollment_id);coordinator(user,en.center_id)
+    if d.status!="effective" or not d.excluded_through or date.today()>d.excluded_through:
+        raise HTTPException(409,"طلب الرفع المبكر غير متاح")
+    if len(reason.strip())<6:raise HTTPException(422,"التعليل إلزامي")
+    d.status="early_pending";d.early_lift_reason=reason.strip()[:2000]
+    log(db,user,"early_lift_request","discipline",d.id,reason);db.commit()
+    return redirect("/platform/discipline")
+
+@app.post("/platform/discipline/{discipline_id}/early-review")
+def early_review(discipline_id:int,request:Request,token:str=Form(alias="_csrf"),
+        decision:str=Form(),reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    d=db.get(Discipline,discipline_id)
+    if not d or d.status!="early_pending" or decision not in ("approved","rejected"):raise HTTPException(409)
+    if len(reason.strip())<6:raise HTTPException(422,"التعليل إلزامي")
+    if decision=="approved":
+        d.status="lifted";d.return_authorized=True
+    else:d.status="effective"
+    log(db,user,"early_lift_"+decision,"discipline",d.id,reason);db.commit()
+    return redirect("/platform/discipline")
+
+@app.post("/platform/discipline/{discipline_id}/return")
+def return_after_exclusion(discipline_id:int,request:Request,token:str=Form(alias="_csrf"),
+       reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);d=db.get(Discipline,discipline_id)
+    if not d:raise HTTPException(404)
+    en=db.get(Enrollment,d.enrollment_id);coordinator(user,en.center_id)
+    if d.status!="effective" or not d.excluded_through or date.today()<=d.excluded_through:
+        raise HTTPException(409,"الإقصاء لم ينته بعد")
+    if len(reason.strip())<6:raise HTTPException(422,"ترخيص العودة يتطلب تعليلًا")
+    d.return_authorized=True;d.status="completed"
+    log(db,user,"return_authorization","discipline",d.id,reason);db.commit()
+    return redirect("/platform/discipline")
+
+@app.get("/platform/notices",response_class=HTMLResponse)
+def notices_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin","coordinator")
+    csrf=request.session["csrf"]
+    notices=db.scalars(select(Notice).order_by(Notice.id.desc()).limit(500)).all()
+    rows=[]
+    for n in notices:
+        en=db.get(Enrollment,n.enrollment_id)
+        if not en or not center_allowed(user,en.center_id):continue
+        action=""
+        if user["role"]=="coordinator":
+            if n.status=="draft":
+                action+=form(f"/platform/notices/{n.id}/issue",csrf,area("body","صياغة الإشعار المعتمدة"),"اعتماد الإشعار وإصداره")
+                action+=form(f"/platform/notices/{n.id}/defer",csrf,area("reason","سبب التأجيل"),"تأجيل")
+            if n.status=="issued":
+                action+=form(f"/platform/notices/{n.id}/deliver",csrf,
+                             field("delivered_on","تاريخ التسليم","date",value=date.today()),"تم التسليم")
+        if n.status in ("issued","delivered"):
+            action+=f' <a class="button" href="/platform/notices/{n.id}/print" target="_blank">طباعة</a>'
+        rows.append([e(db.get(Learner,en.learner_id).full_name),e(n.kind),e(n.body),
+              e(STATUS_LABELS.get(n.status,n.status)),e(n.delivered_at or "—"),action])
+    body='<section><h2>المسودات التلقائية لا تعني إصدارًا تلقائيًا</h2><p class="subtle">لا تُرسل الإشعارات إلكترونيًا، وللمنسق وحده اعتماد نص الورقة وإصدارها ثم تسجيل حالة التسليم وتاريخه فقط.</p>'+
+         table(["المستفيد","النوع","المضمون","الحالة","تاريخ التسليم","الإجراء"],rows)+'</section>'
+    if user["role"]=="coordinator":
+        body='<section><h2>إشعار يدوي</h2>'+form("/platform/notices",csrf,
+         field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
+         choose("kind","نوع الإشعار",[("absence","غياب"),("summons","استدعاء"),("discipline","قرار تأديبي"),("other","أخرى")])+
+         area("body","مضمون الإشعار"),"إنشاء مسودة")+'</section>'+body
+    return page(request,user,"الإشعارات الورقية",body)
+
+@app.post("/platform/notices")
+def manual_notice(request:Request,token:str=Form(alias="_csrf"),enrollment_id:int=Form(),
+      kind:str=Form(),body:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);en=learner_scope(db,user,enrollment_id);coordinator(user,en.center_id)
+    if kind not in ("absence","summons","discipline","other") or len(body.strip())<5:raise HTTPException(422)
+    if kind=="discipline":
+        approved=db.scalar(select(Discipline).where(Discipline.enrollment_id==en.id,
+                           Discipline.status.in_(["effective","completed","lifted"])))
+        if not approved:raise HTTPException(409,"لا يجوز إصدار إشعار قرار تأديبي قبل مصادقة إدارة الجمعية")
+    n=Notice(enrollment_id=en.id,kind=kind,body=body.strip()[:4000])
+    db.add(n);db.flush();log(db,user,"notice_draft","notice",n.id);db.commit()
+    return redirect("/platform/notices")
+
+@app.post("/platform/notices/{notice_id}/issue")
+def issue_notice(notice_id:int,request:Request,token:str=Form(alias="_csrf"),body:str=Form(""),
+      db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);n=db.get(Notice,notice_id)
+    if not n:raise HTTPException(404)
+    en=db.get(Enrollment,n.enrollment_id);coordinator(user,en.center_id)
+    if n.status!="draft":raise HTTPException(409,"الإشعار غير قابل للإصدار")
+    if body.strip():n.body=body.strip()[:4000]
+    if len(n.body.strip())<5:raise HTTPException(422,"مضمون الإشعار إلزامي")
+    n.status="issued";n.issued_at=now()
+    log(db,user,"notice_issue","notice",n.id);db.commit();return redirect("/platform/notices")
+
+@app.post("/platform/notices/{notice_id}/defer")
+def defer_notice(notice_id:int,request:Request,token:str=Form(alias="_csrf"),reason:str=Form(),
+     db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);n=db.get(Notice,notice_id)
+    if not n:raise HTTPException(404)
+    en=db.get(Enrollment,n.enrollment_id);coordinator(user,en.center_id)
+    if n.status!="draft" or len(reason.strip())<5:raise HTTPException(422,"التعليل إلزامي")
+    n.status="deferred";log(db,user,"notice_defer","notice",n.id,reason);db.commit();return redirect("/platform/notices")
+
+@app.post("/platform/notices/{notice_id}/deliver")
+def deliver_notice(notice_id:int,request:Request,token:str=Form(alias="_csrf"),delivered_on:date=Form(),
+      db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);n=db.get(Notice,notice_id)
+    if not n:raise HTTPException(404)
+    en=db.get(Enrollment,n.enrollment_id);coordinator(user,en.center_id)
+    if n.status!="issued" or delivered_on>date.today() or (n.issued_at and delivered_on<n.issued_at.date()):
+        raise HTTPException(422,"تاريخ التسليم أو حالة الإشعار غير صحيح")
+    n.status="delivered";n.delivered_at=delivered_on
+    log(db,user,"notice_delivery","notice",n.id);db.commit();return redirect("/platform/notices")
+
+@app.get("/platform/notices/{notice_id}/print",response_class=HTMLResponse)
+def print_notice(notice_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin","coordinator")
+    n=db.get(Notice,notice_id)
+    if not n:raise HTTPException(404)
+    en=db.get(Enrollment,n.enrollment_id)
+    if not center_allowed(user,en.center_id):raise HTTPException(403)
+    if n.status not in ("issued","delivered"):raise HTTPException(409,"لا تطبع المسودة قبل اعتمادها")
+    name=db.get(Learner,en.learner_id).full_name
+    center=db.get(Center,en.center_id).name
+    return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<title>إشعار رسمي رقم {n.id}</title><style>body{{font-family:Tahoma,Arial,sans-serif;max-width:750px;
+margin:45px auto;font-size:18px;line-height:2.1}}header{{text-align:center;border-bottom:2px solid #236ca3}}
+main{{margin-top:40px}}footer{{display:flex;justify-content:space-between;margin-top:100px}}
+@media print{{button{{display:none}}}}</style></head><body><header><h2>جمعية نور الأمل</h2>
+<div>برنامج الفرصة الثانية – الجيل الجديد</div><p>{e(center)}</p></header>
+<main><h3>إشعار رقم {n.id} · {e(n.kind)}</h3><p>المستفيد(ة): <strong>{e(name)}</strong></p>
+<p>{e(n.body)}</p><p>تاريخ الإصدار: {e(n.issued_at.date() if n.issued_at else "")}</p></main>
+<footer><div>توقيع منسق المركز: ........................</div><div>ختم الجمعية: ........................</div></footer>
+<button onclick="window.print()">طباعة</button></body></html>''')
+
+@app.get("/platform/notifications",response_class=HTMLResponse)
+def notifications_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    if user["id"] is None:
+        return page(request,user,"التنبيهات",'<section>المصادقات الإدارية تظهر ضمن صفحة التقارير والانضباط.</section>')
+    rows=db.scalars(select(Notification).where(Notification.staff_id==user["id"]).order_by(Notification.id.desc()).limit(200)).all()
+    csrf=request.session["csrf"]
+    body=table(["التنبيه","التاريخ","الحالة","الإجراء"],[
+        [f'<a href="{e(n.target)}">{e(n.message)}</a>',e(n.created_at),e("مقروء" if n.read else "جديد"),
+         form(f"/platform/notifications/{n.id}/read",csrf,"","تمت القراءة") if not n.read else "—"] for n in rows])
+    return page(request,user,"التنبيهات الداخلية",f"<section>{body}</section>")
+
+@app.post("/platform/notifications/{notification_id}/read")
+def mark_notification(notification_id:int,request:Request,token:str=Form(alias="_csrf"),
+      db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    n=db.get(Notification,notification_id)
+    if not n or n.staff_id!=user["id"]:raise HTTPException(403)
+    n.read=True;db.commit();return redirect("/platform/notifications")
+
+@app.get("/platform/audit",response_class=HTMLResponse)
+def audit_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin")
+    rows=db.scalars(select(Audit).order_by(Audit.id.desc()).limit(400)).all()
+    return page(request,user,"سجل العمليات",'<section>'+table(["التاريخ","المسؤول","العملية","المورد","معرف","التعليل"],[
+        [e(a.created_at),e(a.actor),e(a.action),e(a.resource),e(a.resource_id),e(a.reason)] for a in rows])+'</section>')
