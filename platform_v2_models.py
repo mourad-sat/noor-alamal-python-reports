@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app import Base, DB_SCHEMA
@@ -281,3 +281,9 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class AttachmentBlob(Base):
+    __tablename__ = "v2_attachment_blobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attachment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_attachments")),unique=True)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
