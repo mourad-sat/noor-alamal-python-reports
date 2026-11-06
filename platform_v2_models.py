@@ -226,3 +226,40 @@ class Audit(Base):
     resource_id: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class GradeCorrection(Base):
+    __tablename__ = "v2_grade_corrections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grade_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_grades")))
+    new_score: Mapped[Decimal] = mapped_column(Numeric(5,2))
+    reason: Mapped[str] = mapped_column(Text)
+    requested_by: Mapped[str] = mapped_column(String(140))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    reviewed_by: Mapped[str] = mapped_column(String(140), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class CenterReport(Base):
+    __tablename__ = "v2_center_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_years")))
+    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")))
+    period_type: Mapped[str] = mapped_column(String(18))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    analysis: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    author_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")))
+    reviewed_by: Mapped[str] = mapped_column(String(140), default="")
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class Attachment(Base):
+    __tablename__ = "v2_attachments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_session_reports")))
+    storage_key: Mapped[str] = mapped_column(String(400), unique=True)
+    original_name: Mapped[str] = mapped_column(String(250))
+    content_type: Mapped[str] = mapped_column(String(120))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    select_for_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
