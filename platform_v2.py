@@ -586,3 +586,276 @@ def mark_attendance(session_id:int,request:Request,token:str=Form(alias="_csrf")
     if status=="absent":absence_notice(db,en,s.held_on)
     log(db,user,"attendance","session",s.id);db.commit()
     return redirect(f"/platform/sessions/{s.id}")
+
+
+from platform_v2_models import GradeCorrection, CenterReport, Attachment
+
+@app.post("/platform/sessions/{session_id}/report")
+def save_report(session_id:int,request:Request,token:str=Form(alias="_csrf"),subject:str=Form(),
+        objectives:str=Form(""),activities:str=Form(""),results:str=Form(""),
+        challenges:str=Form(""),recommendations:str=Form(""),
+        db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    s=db.get(SessionDay,session_id)
+    if not s or s.status=="canceled":raise HTTPException(404)
+    slot=slot_scope(db,user,s.slot_id,for_write=True)
+    report=db.scalar(select(SessionReport).where(SessionReport.session_id==s.id))
+    if report and report.status not in ("draft","returned"):
+        raise HTTPException(409,"التقرير المرسل أو المعتمد مقفل")
+    if not subject.strip():raise HTTPException(422,"عنوان التقرير إلزامي")
+    if not report:report=SessionReport(session_id=s.id,author_id=user["id"],subject=subject.strip()[:200]);db.add(report)
+    for key,val in dict(subject=subject,objectives=objectives,activities=activities,results=results,
+            challenges=challenges,recommendations=recommendations).items():
+        setattr(report,key,val.strip()[:10000])
+    report.status="draft";report.review_comment=""
+    db.flush();log(db,user,"save","session_report",report.id);db.commit()
+    return redirect(f"/platform/sessions/{s.id}")
+
+@app.post("/platform/reports/{report_id}/submit")
+def submit_report(report_id:int,request:Request,token:str=Form(alias="_csrf"),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    r=db.get(SessionReport,report_id)
+    if not r:raise HTTPException(404)
+    s=db.get(SessionDay,r.session_id)
+    slot=slot_scope(db,user,s.slot_id,for_write=True)
+    if r.author_id!=user["id"] or r.status not in ("draft","returned"):
+        raise HTTPException(403,"يمكن إرسال المسودات الخاصة بك فقط")
+    r.status="submitted";db.flush();log(db,user,"submit","session_report",r.id)
+    notify(db,slot.center_id,"تقرير حصة ينتظر المراجعة",f"/platform/reports")
+    db.commit();return redirect("/platform/reports")
+
+@app.get("/platform/reports",response_class=HTMLResponse)
+def review_reports(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    csrf=request.session["csrf"]
+    reports=db.scalars(select(SessionReport).order_by(SessionReport.id.desc()).limit(600)).all()
+    rows=[]
+    for r in reports:
+        s=db.get(SessionDay,r.session_id);slot=db.get(Slot,s.slot_id)
+        if not center_allowed(user,slot.center_id):continue
+        if user["role"] in ("instructor","educator") and r.author_id!=user["id"]:continue
+        approve=""
+        if user["role"]=="coordinator" and r.status=="submitted":
+            approve=form(f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"مصادقة") + form(
+                f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع للتصحيح")
+        rows.append([e(s.held_on),e(slot.subject),e(r.subject),e(STATUS_LABELS.get(r.status,r.status)),
+                     e(r.review_comment),approve])
+    body='<section><h2>تقارير الحصص المنفصلة</h2>'+table(["التاريخ","المادة","عنوان التقرير","الحالة","ملاحظة المنسق","المراجعة"],rows)+'</section>'
+    if user["role"] in ("admin","coordinator"):
+        summaries=db.scalars(select(CenterReport).order_by(CenterReport.id.desc()).limit(200)).all()
+        summaryrows=[]
+        for item in summaries:
+            if not center_allowed(user,item.center_id):continue
+            action=""
+            if user["role"]=="coordinator" and item.author_id==user["id"] and item.status in ("draft","returned"):
+                action=form(f"/platform/summary/{item.id}/submit",csrf,"","إرسال للإدارة")
+            if user["role"]=="admin" and item.status=="submitted":
+                action=form(f"/platform/summary/{item.id}/review",csrf,
+                            '<input name="decision" type="hidden" value="approved">',"مصادقة")
+                action+=form(f"/platform/summary/{item.id}/review",csrf,
+                            '<input name="decision" type="hidden" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع")
+            summaryrows.append([e(db.get(Center,item.center_id).name),e(item.period_type),e(item.period_start),
+                                e(item.period_end),e(STATUS_LABELS.get(item.status,item.status)),action])
+        body+='<section><h2>تقارير المنسقين (المصادقة من إدارة الجمعية)</h2>'+table(["المركز","المدة","من","إلى","الحالة","الإجراء"],summaryrows)+'</section>'
+        if user["role"]=="coordinator":
+            years=db.scalars(select(Year)).all()
+            body+='<section><h2>تقرير دوري للمنسق</h2>'+form("/platform/summary",csrf,
+                choose("year_id","السنة",[(y.id,y.label) for y in years])+
+                choose("center_id","المركز",center_options(db,user))+
+                choose("period_type","التواتر",[("weekly","أسبوعي"),("monthly","شهري"),("activity","نشاط"),("annual","سنوي")])+
+                field("period_start","من","date")+field("period_end","إلى","date")+area("analysis","التحليل والتوصيات"),"حفظ التقرير")+'</section>'
+    return page(request,user,"التقارير والمصادقة",body)
+
+@app.post("/platform/reports/{report_id}/review")
+def review_report(report_id:int,request:Request,token:str=Form(alias="_csrf"),decision:str=Form(),comment:str=Form(""),
+                  db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    r=db.get(SessionReport,report_id)
+    if not r:raise HTTPException(404)
+    slot=db.get(Slot,db.get(SessionDay,r.session_id).slot_id)
+    coordinator(user,slot.center_id)
+    if r.status!="submitted" or decision not in ("approved","returned"):
+        raise HTTPException(409,"حالة المراجعة غير صحيحة")
+    if decision=="returned" and len(comment.strip())<5:raise HTTPException(422,"سبب الإرجاع إلزامي")
+    r.status=decision;r.review_comment=comment.strip()[:1500];r.reviewed_by=user["name"];r.reviewed_at=now()
+    db.add(Notification(staff_id=r.author_id,message=f"تحديث تقرير الحصة: {STATUS_LABELS[decision]}",target=f"/platform/sessions/{r.session_id}"))
+    log(db,user,decision,"session_report",r.id,comment);db.commit()
+    return redirect("/platform/reports")
+
+@app.post("/platform/summary")
+def create_center_summary(request:Request,token:str=Form(alias="_csrf"),year_id:int=Form(),center_id:int=Form(),
+          period_type:str=Form(),period_start:date=Form(),period_end:date=Form(),analysis:str=Form(""),
+          db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);coordinator(user,center_id)
+    if period_start>period_end or period_type not in ("weekly","monthly","activity","annual") or not db.get(Year,year_id):
+        raise HTTPException(422,"بيانات الفترة غير صحيحة")
+    r=CenterReport(year_id=year_id,center_id=center_id,period_type=period_type,
+            period_start=period_start,period_end=period_end,analysis=analysis[:12000],author_id=user["id"])
+    db.add(r);db.flush();log(db,user,"create","center_report",r.id);db.commit()
+    return redirect("/platform/reports")
+
+@app.post("/platform/summary/{report_id}/submit")
+def submit_center_summary(report_id:int,request:Request,token:str=Form(alias="_csrf"),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);r=db.get(CenterReport,report_id)
+    if not r:raise HTTPException(404)
+    coordinator(user,r.center_id)
+    if r.author_id!=user["id"] or r.status not in ("draft","returned"):raise HTTPException(403)
+    r.status="submitted";log(db,user,"submit","center_report",r.id);db.commit()
+    return redirect("/platform/reports")
+
+@app.post("/platform/summary/{report_id}/review")
+def review_center_summary(report_id:int,request:Request,token:str=Form(alias="_csrf"),
+        decision:str=Form(),comment:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    r=db.get(CenterReport,report_id)
+    if not r:raise HTTPException(404)
+    if r.status!="submitted" or decision not in ("approved","returned"):raise HTTPException(409)
+    if decision=="returned" and len(comment.strip())<5:raise HTTPException(422,"سبب الإرجاع إلزامي")
+    r.status=decision;r.reviewed_by=user["name"];r.reviewed_at=now();r.review_comment=comment.strip()[:2000]
+    db.add(Notification(staff_id=r.author_id,message=f"تمت مراجعة التقرير الدوري: {STATUS_LABELS[decision]}",target="/platform/reports"))
+    log(db,user,decision,"center_report",r.id,comment);db.commit()
+    return redirect("/platform/reports")
+
+def score_value(value:str)->Decimal:
+    try:x=Decimal(value)
+    except InvalidOperation:raise HTTPException(422,"النقطة غير رقمية")
+    if not x.is_finite() or x<0 or x>20 or x.as_tuple().exponent < -2:
+        raise HTTPException(422,"النقط من 0 إلى 20 وبحد أقصى خانتين عشريتين")
+    return x
+
+def transcript(db:Session,en:Enrollment):
+    assessments=db.scalars(select(Assessment).where(Assessment.track_id==en.track_id)).all()
+    weighted={}
+    for a in assessments:
+        grade=db.scalar(select(Grade).where(Grade.assessment_id==a.id,Grade.enrollment_id==en.id,Grade.status=="approved"))
+        if not grade:continue
+        weighted.setdefault(a.subject,[]).append((grade.score,a.coefficient))
+    def average(points):
+        if not points:return None
+        denom=sum((c for _,c in points),Decimal(0))
+        if denom<=0:return None
+        return (sum((score*c for score,c in points),Decimal(0))/denom).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+    output={"المعدل المهني":average(weighted.get("مهني",[]))}
+    for subject in SUBJECTS:output[subject]=average(weighted.get(subject,[]))
+    output["معدل التأهيل التربوي"]=(
+        (sum((output[s] for s in SUBJECTS),Decimal(0))/Decimal(3)).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+        if all(output[s] is not None for s in SUBJECTS) else None)
+    return output
+
+@app.get("/platform/grades",response_class=HTMLResponse)
+def grades_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+    csrf=request.session["csrf"]
+    assessments=[a for a in db.scalars(select(Assessment).order_by(Assessment.held_on.desc()).limit(500)).all()
+                 if any(t.id==a.track_id for t in db.scalars(select(Track)).all() if center_allowed(user,t.center_id))
+                 and (user["role"] in ("admin","coordinator") or a.staff_id==user["id"])]
+    rows=[]
+    for a in assessments:
+        t=db.get(Track,a.track_id)
+        grades=db.scalars(select(Grade).where(Grade.assessment_id==a.id)).all()
+        related=[]
+        for g in grades:
+            en=db.get(Enrollment,g.enrollment_id);l=db.get(Learner,en.learner_id)
+            action=""
+            if user["role"]=="coordinator" and center_allowed(user,t.center_id) and g.status=="pending":
+                action=form(f"/platform/grades/{g.id}/approve",csrf,"","مصادقة")
+            if user["id"]==a.staff_id and g.status=="approved":
+                action+=form(f"/platform/grades/{g.id}/correction",csrf,
+                    field("new_score","النقطة الجديدة","number",extra='min="0" max="20" step="0.01"')+
+                    area("reason","سبب التصحيح"),"طلب تصحيح")
+            related.append(f"{e(l.full_name)}: {e(g.score)} ({e(g.status)}) {action}")
+        rows.append([e(db.get(Track,a.track_id).name),e(a.subject),e(a.title),e(a.held_on),e(a.coefficient),
+            "<hr>".join(related)])
+    body='<section><h2>الاختبارات والنقط حسب المادة</h2>'+table(["المسلك","المادة","الاختبار","التاريخ","المعامل","النقط"],rows)+'</section>'
+    if user["role"] in ("instructor","educator"):
+        allowed=[]
+        for asgn in user["assignments"]:
+            if asgn.track_id:
+                track=db.get(Track,asgn.track_id)
+                if track:allowed.append((track.id,f"{track.name} · {asgn.subject or 'مهني'}"))
+        body='<section><h2>إنشاء تقييم بمعامل مستقل</h2>'+form("/platform/assessments",csrf,
+          choose("track_id","المسلك",allowed)+choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
+          field("title","عنوان الاختبار")+field("held_on","تاريخ الاختبار","date")+
+          field("coefficient","المعامل","number",extra='step="0.01" min="0.01"'),"إنشاء الاختبار")+'</section>'+body
+        body+='<section><h2>إدخال نقطة</h2>'+form("/platform/grades",csrf,
+           choose("assessment_id","الاختبار",[(a.id,f"{a.title} · {a.subject}") for a in assessments if a.staff_id==user["id"]])+
+           field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
+           field("score","النقطة من 20","number",extra='min="0" max="20" step="0.01"'),"حفظ نقطة للمراجعة")+'</section>'
+    if user["role"]=="coordinator":
+        pending=db.scalars(select(GradeCorrection).where(GradeCorrection.status=="pending")).all()
+        cr=[]
+        for item in pending:
+            g=db.get(Grade,item.grade_id);a=db.get(Assessment,g.assessment_id)
+            track=db.get(Track,a.track_id)
+            if not center_allowed(user,track.center_id):continue
+            cr.append([e(g.id),e(g.score),e(item.new_score),e(item.reason),
+                form(f"/platform/corrections/{item.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"قبول")+
+                form(f"/platform/corrections/{item.id}/review",csrf,'<input type="hidden" name="decision" value="rejected">',"رفض")])
+        body+='<section><h2>طلبات تصحيح النقط المعتمدة</h2>'+table(["النقطة","قبل","بعد","التعليل","القرار"],cr)+'</section>'
+    return page(request,user,"النقط والتقييم",body)
+
+@app.post("/platform/assessments")
+def create_assessment(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(),subject:str=Form(),
+     title:str=Form(),held_on:date=Form(),coefficient:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"instructor","educator");assert_csrf(request,token)
+    t=db.get(Track,track_id)
+    if not t or not any(a.track_id==t.id and a.subject==("" if subject=="مهني" else subject) for a in user["assignments"]):
+        raise HTTPException(403,"المسلك أو المادة غير مسندين إليك")
+    if subject not in ("مهني",*SUBJECTS) or not title.strip():raise HTTPException(422,"بيانات الاختبار غير صحيحة")
+    try:coeff=Decimal(coefficient)
+    except InvalidOperation:raise HTTPException(422,"المعامل غير صحيح")
+    if not coeff.is_finite() or coeff<=0 or coeff>100:raise HTTPException(422,"المعامل يجب أن يكون موجبًا")
+    a=Assessment(track_id=t.id,staff_id=user["id"],subject=subject,title=title.strip()[:180],held_on=held_on,coefficient=coeff)
+    db.add(a);db.flush();log(db,user,"create","assessment",a.id);db.commit();return redirect("/platform/grades")
+
+@app.post("/platform/grades")
+def grade_save(request:Request,token:str=Form(alias="_csrf"),assessment_id:int=Form(),enrollment_id:int=Form(),
+     score:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"instructor","educator");assert_csrf(request,token)
+    a=db.get(Assessment,assessment_id);en=learner_scope(db,user,enrollment_id)
+    if not a or a.staff_id!=user["id"] or a.track_id!=en.track_id:raise HTTPException(403,"الاختبار أو التسجيل غير مصرح به")
+    value=score_value(score)
+    g=db.scalar(select(Grade).where(Grade.assessment_id==assessment_id,Grade.enrollment_id==en.id))
+    if g and g.status=="approved":raise HTTPException(409,"النقطة المعتمدة لا تُعدل إلا بطلب تصحيح معلل")
+    if not g:g=Grade(assessment_id=a.id,enrollment_id=en.id,score=value);db.add(g)
+    else:g.score=value
+    db.flush();log(db,user,"save","grade",g.id);notify(db,en.center_id,"نقطة تنتظر المصادقة","/platform/grades")
+    db.commit();return redirect("/platform/grades")
+
+@app.post("/platform/grades/{grade_id}/approve")
+def approve_grade(grade_id:int,request:Request,token:str=Form(alias="_csrf"),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token)
+    g=db.get(Grade,grade_id)
+    if not g:raise HTTPException(404)
+    en=db.get(Enrollment,g.enrollment_id)
+    coordinator(user,en.center_id)
+    if g.status!="pending":raise HTTPException(409,"النقطة غير معلقة")
+    g.status="approved";g.approved_by=user["name"]
+    log(db,user,"approve","grade",g.id);db.commit();return redirect("/platform/grades")
+
+@app.post("/platform/grades/{grade_id}/correction")
+def request_correction(grade_id:int,request:Request,token:str=Form(alias="_csrf"),new_score:str=Form(),
+        reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);g=db.get(Grade,grade_id)
+    if not g or g.status!="approved":raise HTTPException(409,"النقطة غير معتمدة")
+    a=db.get(Assessment,g.assessment_id)
+    if user["id"]!=a.staff_id:raise HTTPException(403)
+    if len(reason.strip())<6:raise HTTPException(422,"سبب التصحيح إلزامي")
+    if db.scalar(select(GradeCorrection).where(GradeCorrection.grade_id==g.id,GradeCorrection.status=="pending")):
+        raise HTTPException(409,"يوجد طلب تصحيح معلق")
+    change=GradeCorrection(grade_id=g.id,new_score=score_value(new_score),reason=reason.strip()[:2000],requested_by=user["name"])
+    db.add(change);db.flush()
+    en=db.get(Enrollment,g.enrollment_id)
+    notify(db,en.center_id,"طلب تصحيح نقطة معتمدة","/platform/grades")
+    log(db,user,"correction_request","grade",g.id,reason);db.commit();return redirect("/platform/grades")
+
+@app.post("/platform/corrections/{change_id}/review")
+def review_correction(change_id:int,request:Request,token:str=Form(alias="_csrf"),decision:str=Form(),
+        db:Session=Depends(get_db),user=Depends(actor)):
+    assert_csrf(request,token);change=db.get(GradeCorrection,change_id)
+    if not change or change.status!="pending" or decision not in ("approved","rejected"):raise HTTPException(409)
+    g=db.get(Grade,change.grade_id)
+    coordinator(user,db.get(Enrollment,g.enrollment_id).center_id)
+    if decision=="approved":
+        old=g.score;g.score=change.new_score
+        log(db,user,"approve_correction","grade",g.id,f"old={old};new={g.score};reason={change.reason}")
+    change.status=decision;change.reviewed_by=user["name"]
+    db.commit();return redirect("/platform/grades")
