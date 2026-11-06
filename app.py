@@ -13,10 +13,11 @@ from typing import Annotated
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, or_, select
+from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import NullPool
 from starlette.middleware.sessions import SessionMiddleware
@@ -84,9 +85,9 @@ def initialize_database():
     global _db_ready
     if _db_ready or engine is None:
         return
+    # Production PostgreSQL schema is pre-provisioned through a controlled migration.
+    # Do not require CREATE SCHEMA privileges from the runtime database account.
     with engine.begin() as conn:
-        if DB_SCHEMA:
-            conn.exec_driver_sql('CREATE SCHEMA IF NOT EXISTS noor_app')
         Base.metadata.create_all(conn)
     _db_ready = True
 
@@ -141,7 +142,15 @@ async def security_headers(request: Request, call_next):
 
 @app.get('/health')
 def health():
-    return {'service': 'noor-alamal', 'status': 'ready' if READY else 'setup-required'}
+    if not READY:
+        return {'service': 'noor-alamal', 'status': 'setup-required'}
+    try:
+        initialize_database()
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    except (SQLAlchemyError, OSError):
+        return JSONResponse({'service': 'noor-alamal', 'status': 'database-unavailable'}, status_code=503)
+    return {'service': 'noor-alamal', 'status': 'ready'}
 
 @app.get('/setup', response_class=HTMLResponse)
 def setup(request: Request):
