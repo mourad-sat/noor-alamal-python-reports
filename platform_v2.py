@@ -378,7 +378,7 @@ def learner_create(request:Request,token:str=Form(alias="_csrf"),full_name:str=F
 @app.get("/platform/learners/{enrollment_id}",response_class=HTMLResponse)
 def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     en=learner_scope(db,user,enrollment_id);l=db.get(Learner,en.learner_id);csrf=request.session["csrf"]
-    atts=db.scalars(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
+    atts=db.execute(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
                     .where(Attendance.enrollment_id==en.id).order_by(SessionDay.held_on.desc())).all()
     pending=sum(a.status=="absent" and a.permit_id is None for a,s in atts)
     historic=sum(a.status=="absent" for a,s in atts)
@@ -547,7 +547,7 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
     return page(request,user,"تدبير الحصة",body)
 
 def absence_notice(db:Session,en:Enrollment,held_on:date):
-    atts=db.scalars(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
+    atts=db.execute(select(Attendance,SessionDay).join(SessionDay,Attendance.session_id==SessionDay.id)
                     .where(Attendance.enrollment_id==en.id,Attendance.status=="absent")).all()
     monday=held_on-timedelta(days=held_on.weekday())
     first=held_on.replace(day=1)
