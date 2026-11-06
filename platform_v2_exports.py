@@ -93,7 +93,7 @@ def export_grade_batch(request:Request,token:str=Form(alias="_csrf"),year_id:int
           {rows}<p class="note">المعدلات من النقط المصادق عليها فقط، دون حساب معدل إجمالي بين التكوين المهني والتأهيل التربوي.</p>
           <footer><div>توقيع منسق المركز<br><br>..........................</div>
           <div>توقيع وختم الجمعية<br><br>..........................</div>
-          <div class="qr">{code}<small>تحقق من صحة النسخة<br>رمز QR</small></div></footer></article>''')
+          <div class="qr">{code}<small>تحقق من صحة النسخة<br>رمز QR</small><a href="{e(verify_url)}">التحقق</a></div></footer></article>''')
     if not pages:
         raise HTTPException(404,"لم يُعثر على مستفيدين في هذا المركز والمسلك والسنة")
     db.flush()
