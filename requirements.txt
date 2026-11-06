@@ -6,3 +6,5 @@ python-multipart==0.0.22
 itsdangerous==2.2.0
 python-dotenv==1.2.1
 psycopg2-binary==2.9.11
+
+openpyxl==3.1.5
