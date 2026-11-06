@@ -140,7 +140,7 @@ def page(request, user, title, body):
     menu = [
         ("الرئيسية", "/platform"), ("السنوات والمسالك", "/platform/years"),
         ("المستفيدون", "/platform/learners"), ("جدولة الحصص", "/platform/schedule"),
-        ("تقارير الحصص", "/platform/reports"), ("النقط", "/platform/grades"),
+        ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"), ("النقط", "/platform/grades"),
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
         ("التنبيهات", "/platform/notifications"),
     ]
