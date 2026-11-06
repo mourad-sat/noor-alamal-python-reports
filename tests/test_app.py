@@ -18,7 +18,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv('ADMIN_USERNAME', 'admin')
     monkeypatch.delenv('VERCEL', raising=False)
     sys.path.insert(0, str(PROJECT))
-    for name in ('platform_v2', 'platform_v2_models', 'platform_v2_imports', 'platform_v2_exports', 'platform_v2_aggregates', 'app'):
+    for name in ('platform_v2', 'platform_v2_models', 'platform_v2_imports', 'platform_v2_exports', 'platform_v2_aggregates', 'platform_v2_attachments', 'app'):
         sys.modules.pop(name, None)
     application = importlib.import_module('app')
     with TestClient(application.app, follow_redirects=False) as client:
