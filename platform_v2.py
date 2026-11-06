@@ -144,6 +144,9 @@ def page(request, user, title, body):
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
         ("التنبيهات", "/platform/notifications"),
     ]
+    if user["role"] in ("admin","coordinator"):
+        menu.append(("استيراد Excel", "/platform/import"))
+        menu.append(("كشوف النقط PDF", "/platform/exports/grades"))
     if user["role"] == "admin":
         menu.insert(1, ("الموظفون", "/platform/staff"))
         menu.append(("السجل الإداري", "/platform/audit"))
@@ -722,10 +725,12 @@ def score_value(value:str)->Decimal:
         raise HTTPException(422,"النقط من 0 إلى 20 وبحد أقصى خانتين عشريتين")
     return x
 
-def transcript(db:Session,en:Enrollment):
+def transcript(db:Session,en:Enrollment,start:date|None=None,end:date|None=None):
     assessments=db.scalars(select(Assessment).where(Assessment.track_id==en.track_id)).all()
     weighted={}
     for a in assessments:
+        if start and a.held_on<start:continue
+        if end and a.held_on>end:continue
         grade=db.scalar(select(Grade).where(Grade.assessment_id==a.id,Grade.enrollment_id==en.id,Grade.status=="approved"))
         if not grade:continue
         weighted.setdefault(a.subject,[]).append((grade.score,a.coefficient))
