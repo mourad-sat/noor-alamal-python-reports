@@ -699,6 +699,11 @@ def review_reports(request:Request,db:Session=Depends(get_db),user=Depends(actor
             approve=form(f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"مصادقة") + form(
                 f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع للتصحيح")
         approve+=f' <a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
+        if user["role"]=="admin":
+            approve+=form(f"/platform/reports/{r.id}/erase",csrf,
+                area("reason","السبب المكتوب للحذف النهائي")+
+                field("confirmation","اكتب: حذف التقرير"),
+                "حذف التقرير نهائيًا")
         rows.append([e(s.held_on),e(slot.subject),e(r.subject),e(STATUS_LABELS.get(r.status,r.status)),
                      e(r.review_comment),approve])
     body='<section><h2>تقارير الحصص المنفصلة</h2>'+table(["التاريخ","المادة","عنوان التقرير","الحالة","ملاحظة المنسق","المراجعة"],rows)+'</section>'
