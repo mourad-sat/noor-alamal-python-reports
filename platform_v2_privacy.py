@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app import APP_SECRET, Absence, Report, app, get_db
 from platform_v2 import actor, assert_csrf, e, form, field, choose, area, page, require_role
 from platform_v2_models import (
-    Assessment, Attachment, Attendance, AttendanceCorrection, Audit, CenterReport,
+    Assessment, Attachment, AttachmentBlob, Attendance, AttendanceCorrection, Audit, CenterReport,
     Discipline, DocumentProof, Enrollment, ErasureAggregate, Grade,
     GradeCorrection, Incident, Learner, Notice, Notification, Permit,
     SessionDay, SessionReport, Slot,
@@ -198,3 +198,30 @@ def erase_post(request:Request,token:str=Form(alias="_csrf"),learner_id:int=Form
         raise HTTPException(422,"تأكيد الحذف النهائي غير مطابق")
     erase_learner(db,user,learner_id,reason,category)
     return RedirectResponse("/platform/learners",status_code=303)
+
+
+@app.post("/platform/reports/{report_id}/erase")
+def erase_session_report(request:Request,report_id:int,token:str=Form(alias="_csrf"),
+                        reason:str=Form(),confirmation:str=Form(),
+                        db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin")
+    assert_csrf(request,token)
+    if confirmation.strip()!="حذف التقرير" or len(reason.strip())<10:
+        raise HTTPException(422,"تأكيد الحذف وتعليله إلزاميان")
+    report=db.get(SessionReport,report_id)
+    if not report:raise HTTPException(404,"التقرير غير موجود")
+    attachments=db.scalars(select(Attachment).where(Attachment.report_id==report.id)).all()
+    attachment_ids=[item.id for item in attachments]
+    if attachment_ids:
+        db.execute(delete(AttachmentBlob).where(AttachmentBlob.attachment_id.in_(attachment_ids)))
+        db.execute(delete(Attachment).where(Attachment.id.in_(attachment_ids)))
+    db.execute(delete(Audit).where(Audit.resource=="session_report",Audit.resource_id==report.id))
+    db.execute(delete(Audit).where(Audit.resource=="attachment",
+                                  Audit.resource_id.in_(attachment_ids)))
+    db.delete(report)
+    stamp=hmac.new(APP_SECRET.encode(),reason.strip().encode(),hashlib.sha256).hexdigest()[:16]
+    db.add(Audit(actor=user["name"],action="session_report_erasure",
+                 resource="privacy",resource_id=0,
+                 reason=f"category=report;reason_digest={stamp}"))
+    db.commit()
+    return RedirectResponse("/platform/reports",status_code=303)
