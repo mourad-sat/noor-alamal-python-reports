@@ -71,7 +71,13 @@ def test_report_workflow_and_exports(client):
     changed = {**report, 'subject': 'عنوان معدّل'}
     assert client.post(f'/reports/{report_id}/edit', data=changed).status_code == 303
     assert 'عنوان معدّل' in client.get(f'/reports/{report_id}').text
-    assert client.post(f'/reports/{report_id}/delete', data={'_csrf': csrf}).status_code == 303
+    assert client.post(f'/reports/{report_id}/delete', data={
+        '_csrf': csrf, 'reason': 'test', 'confirmation': 'حذف التقرير'
+    }).status_code == 422
+    assert client.post(f'/reports/{report_id}/delete', data={
+        '_csrf': csrf, 'reason': 'حذف التقرير تجريبياً مع تسجيل السبب',
+        'confirmation': 'حذف التقرير'
+    }).status_code == 303
     assert client.get(f'/reports/{report_id}').status_code == 404
 
 
@@ -115,6 +121,16 @@ def test_health_rejects_incomplete_database_schema(client, monkeypatch):
     result = client.get('/health')
     assert result.status_code == 503
     assert result.json()['status'] == 'migration-required'
+
+
+def test_official_association_logo_is_served_in_login_and_navigation(client):
+    image=client.get('/static/noor_official_logo.webp')
+    assert image.status_code == 200
+    assert image.headers.get('content-type','').startswith('image/webp')
+    assert image.content.startswith(b'RIFF') and b'WEBP' in image.content[:20]
+    assert '/static/noor_official_logo.webp' in client.get('/login').text
+    login(client)
+    assert '/static/noor_official_logo.webp' in client.get('/platform').text
 
 
 def test_repeated_login_attempts_are_temporarily_limited_without_raw_ip(client):
