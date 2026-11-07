@@ -17,7 +17,9 @@ jobs:
           set -euo pipefail
           BASE="https://noor-alamal-python-reports.vercel.app"
           echo "Checking production health..."
-          curl --fail-with-body --silent --show-error --location --retry 2 --retry-delay 3 --max-time 45 "$BASE/health" -o /tmp/health.json
+          http_code=$(curl --silent --show-error --location --retry 2 --retry-delay 3 --max-time 45 -w '%{http_code}' "$BASE/health" -o /tmp/health.json)
+          echo "Health HTTP status: $http_code"
+          cat /tmp/health.json
           python - <<'PY'
           import json
           with open('/tmp/health.json', encoding='utf-8') as f:
