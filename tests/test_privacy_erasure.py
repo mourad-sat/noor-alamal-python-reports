@@ -28,7 +28,7 @@ def test_admin_erasure_cleans_personal_relations_and_invalidates_public_qr(clien
        subject="برنامج تكويني",objectives="تتبع مستفيد الخصوصية التجريبي",
        activities="تطبيقات عملية",results="",challenges="",recommendations="")
     assert report.status_code==303
-    picture=(b"\\x89PNG\\r\\n\\x1a\\n" + b"img-evidence-for-test")
+    picture=(bytes.fromhex("89504e470d0a1a0a")+b"image-evidence-for-test")
     uploaded=client.post("/platform/reports/1/attachments",data={"_csrf":teacher},
           files={"file":("session-privacy.png",picture,"image/png")})
     assert uploaded.status_code==303
