@@ -177,7 +177,7 @@ def test_partial_excel_csv_import_and_qr_proof(client):
     assert found,export.text[-2000:]
     verify=client.get("/verify/"+found.group(1))
     assert verify.status_code==200
-    assert "مطابقة للبيانات الرسمية" in verify.text
+    assert "البيانات الإلكترونية المعتمدة" in verify.text
     assert "سارة الاختبار" not in verify.text
 
 
