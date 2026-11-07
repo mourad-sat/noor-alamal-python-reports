@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, or_, select, text
+from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, inspect, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import NullPool
@@ -159,6 +159,16 @@ def health():
         initialize_database()
         with engine.connect() as conn:
             conn.execute(text('SELECT 1'))
+            # Release readiness requires all tables, not just an open connection.
+            # This detects a missing v2 migration before any real user logs in.
+            names = [table.name for table in Base.metadata.tables.values]
+            inspection = inspect(conn)
+            missing = [name for name in names if not inspection.has_table(name, schema=DB_SCHEMA)]
+            if missing:
+                return JSONResponse(
+                    {'service': 'noor-alamal', 'status': 'migration-required'},
+                    status_code=503,
+                )
     except (SQLAlchemyError, OSError):
         return JSONResponse({'service': 'noor-alamal', 'status': 'database-unavailable'}, status_code=503)
     return {'service': 'noor-alamal', 'status': 'ready'}
