@@ -85,7 +85,7 @@ def export_grade_batch(request:Request,token:str=Form(alias="_csrf"),year_id:int
             [e(name),e(value) if value is not None else "— (غير مكتمل)"] for name,value in averages.items()
         ])
         period=f"من {start or 'بداية السنة'} إلى {end or 'نهاية السنة'}"
-        pages.append(f'''<article class="sheet"><header><div class="logo-text">جمعية نور الأمل</div>
+        pages.append(f'''<article class="sheet"><header><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل" width="100" height="88" style="display:block;margin:auto auto 6px"><div class="logo-text">جمعية نور الأمل</div>
           <p>برنامج الفرصة الثانية – الجيل الجديد</p><h2>كشف النقط الفردي</h2></header>
           <div class="meta"><p>المركز: <b>{e(center.name)}</b></p><p>المسلك: <b>{e(db.get(Track,en.track_id).name)}</b></p>
           <p>السنة التكوينية: <b>{e(year.label)}</b></p><p>الفترة: {e(period)}</p>
