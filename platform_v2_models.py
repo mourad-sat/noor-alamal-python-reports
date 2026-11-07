@@ -302,3 +302,11 @@ class AttendanceCorrection(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     review_comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class LoginAttempt(Base):
+    """Hashed account/IP fingerprint: never store source IP or entered name."""
+    __tablename__ = "v2_login_attempts"
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    first_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
