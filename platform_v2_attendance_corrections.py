@@ -93,7 +93,7 @@ def request_attendance_correction(attendance_id: int, request: Request,
     notify(db, enrollment.center_id, "تصحيح حضور معتمد ينتظر المصادقة", "/platform/attendance/corrections")
     log(db, user, "request_attendance_correction", "attendance", a.id)
     db.commit()
-    return RedirectResponse("/platform/attendance/corrections", status_code=303)
+    return RedirectResponse(f"/platform/sessions/{session.id}", status_code=303)
 
 @app.post("/platform/attendance/corrections/{correction_id}/review")
 def review_attendance_correction(correction_id: int, request: Request,
