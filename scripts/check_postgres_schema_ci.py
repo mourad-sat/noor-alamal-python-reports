@@ -86,6 +86,7 @@ from sqlalchemy import event
 from fastapi.testclient import TestClient
 
 os.environ["DATABASE_URL"] = dsn
+os.environ["NOOR_DB_SSLMODE"] = "disable"  # Local disposable CI only.
 os.environ["APP_SECRET"] = "ephemeral-github-ci-only-secret-no-production-use"
 salt = b"local-test-salt"
 digest = hashlib.pbkdf2_hmac("sha256", b"ci-password-strong", salt, 390000)
