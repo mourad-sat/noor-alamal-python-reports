@@ -1,6 +1,6 @@
 # Noor Al Amal — production release gate (2026-11-06)
 
-**Status: NOT READY FOR PRODUCTION. Keep PR #1 as draft. Do not merge main.**
+**Status: DB schema installed and verified. Public release still blocked until backups and deployment smoke checks pass. Keep PR #1 as draft.**
 
 Project: Vercel `noor-alamal-python-reports`, database `mjpeudultagipkiqgyql`,
 development branch `feature/platform-v2-20261106`.
@@ -66,6 +66,32 @@ development branch `feature/platform-v2-20261106`.
   functioning non-production database and credentials are configured.
 - [ ] No live production schema migration or `main` merge has occurred.
 
+## Deployment preparation — 2026-11-07 18:42 UTC
+
+- [x] User explicitly requested the final release to start.
+- [x] Exact tested migration generated in GitHub Actions run
+  [42402035527](https://github.com/mourad-sat/noor-alamal-python-reports/actions/runs/42402035527)
+  and checked to contain **30 additive tables, 30 RLS policies, and no destructive DDL**.
+- [x] Additive migration `add_noor_v2_operational_schema_20261107`
+  successfully applied to the dedicated production Supabase project
+  `mjpeudultagipkiqgyql`; it did not delete or rewrite the existing two tables.
+- [x] Verified all **30 new tables have RLS** and the server-role policy,
+  `anon`/`authenticated` cannot directly read `v2_learners`,
+  and `noor_reports_web` can read it.
+- [x] Supabase security advisors returned no findings after migration.
+- [x] Production deployment still at known-good commit
+  `94e99e388b6bcd371c7483bb7f5d03326b87bd4b`
+  and `/health` returned `ready`.
+- [x] Rollback branch `rollback/pre-v2-20261107` created at the
+  known-good production commit.
+- [ ] The Vercel preview still returns `setup-required` because
+  only production has configured credentials.
+- [ ] The encrypted weekly backup has **not run with real secrets**;
+  a real backup, successful isolated restore, and four-week retention
+  cannot be claimed operational before verifying them.
+- [ ] Do not expose real learner data until backup, recovery and erasure
+  restoration requirements are verified.
+
 ## Blocking release requirements
 
 - [ ] Provision an **isolated testing database and restricted role**. Do not point an
@@ -88,7 +114,7 @@ development branch `feature/platform-v2-20261106`.
 - [ ] Confirm the bulk grade export creates an acceptable **PDF** document, and review
   whether a downloadable server-generated PDF/ZIP is required beyond browser Print → PDF.
 - [ ] Verify coordinator-only attachment selection is reflected in aggregate report output.
-- [ ] Test production migration additively **after** obtaining a recovery point.
+- [x] Add-only production schema migration applied to empty historical tables and RLS verified; full backup recovery point still pending.
 - [ ] Obtain final release sign-off against the reviewed commit, verify deployment target
   production/main and retain a rollback procedure.
 
