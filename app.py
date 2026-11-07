@@ -161,7 +161,7 @@ def health():
             conn.execute(text('SELECT 1'))
             # Release readiness requires all tables, not just an open connection.
             # This detects a missing v2 migration before any real user logs in.
-            names = [table.name for table in Base.metadata.tables.values]
+            names = [table.name for table in Base.metadata.tables.values()]
             inspection = inspect(conn)
             missing = [name for name in names if not inspection.has_table(name, schema=DB_SCHEMA)]
             if missing:
