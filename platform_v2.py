@@ -153,6 +153,7 @@ def page(request, user, title, body):
     if user["role"] == "admin":
         menu.insert(1, ("الموظفون", "/platform/staff"))
         menu.append(("إعدادات التنبيه", "/platform/settings"))
+        menu.append(("حماية البيانات والحذف", "/platform/privacy/erase"))
         menu.append(("السجل الإداري", "/platform/audit"))
         menu.append(("التقارير القديمة", "/reports"))
     nav = "".join(f'<a href="{url}">{e(label)}</a>' for label, url in menu)
