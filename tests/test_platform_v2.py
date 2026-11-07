@@ -175,3 +175,44 @@ def test_partial_excel_csv_import_and_qr_proof(client):
     assert verify.status_code==200
     assert "مطابقة للبيانات الرسمية" in verify.text
     assert "سارة الاختبار" not in verify.text
+
+
+def test_approved_attendance_is_locked_and_requires_coordinator_review(client):
+    admin=setup_org(client)
+    signout(client,admin)
+    c1=signin(client,"coord1","strong-test-password-12345")
+    learner=post(client,"/platform/learners",c1,full_name="آمنة للاختبار",gender="أنثى",
+        born_on="2012-02-02",birthplace="سلا",phone="",address="",
+        guardian_name="ولي آمنة",guardian_relationship="الأم",
+        guardian_phone="0600000011",year_id=1,track_id=1)
+    assert learner.status_code==303
+    slot=post(client,"/platform/schedule",c1,track_id=1,staff_id=3,
+          subject="مهني",weekday=4,starts_at="09:00",ends_at="10:30",reason="الجدول الأسبوعي")
+    assert slot.status_code==303
+    signout(client,c1)
+    teacher=signin(client,"trainer","strong-test-password-12345")
+    assert post(client,"/platform/sessions",teacher,slot_id=1,held_on="2026-11-06").status_code==303
+    assert post(client,"/platform/sessions/1/attendance",teacher,enrollment_id=1,status="present").status_code==303
+    report=post(client,"/platform/sessions/1/report",teacher,subject="تكوين في التسويق",
+        objectives="التعلم",activities="التطبيق",results="المهارات",challenges="",recommendations="")
+    assert report.status_code==303
+    assert post(client,"/platform/reports/1/submit",teacher).status_code==303
+    signout(client,teacher)
+    c1=signin(client,"coord1","strong-test-password-12345")
+    assert post(client,"/platform/reports/1/review",c1,decision="approved",comment="").status_code==303
+    signout(client,c1)
+    teacher=signin(client,"trainer","strong-test-password-12345")
+    locked=post(client,"/platform/sessions/1/attendance",teacher,enrollment_id=1,status="absent")
+    assert locked.status_code==409
+    assert "طلب تصحيح" in client.get("/platform/sessions/1").text
+    requested=post(client,"/platform/attendance/1/correction",teacher,
+        new_status="absent",reason="تم إدخال الحضور خطأ أثناء إتمام سجل الحصة")
+    assert requested.status_code==303,requested.text[:450]
+    signout(client,teacher)
+    c1=signin(client,"coord1","strong-test-password-12345")
+    review_page=client.get("/platform/attendance/corrections")
+    assert review_page.status_code==200
+    assert "تم إدخال الحضور خطأ" in review_page.text
+    approved=post(client,"/platform/attendance/corrections/1/review",c1,decision="approved",comment="تم التحقق")
+    assert approved.status_code==303
+    assert "غياب معلق" in client.get("/platform/learners/1").text
