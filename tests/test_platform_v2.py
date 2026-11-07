@@ -117,8 +117,11 @@ def test_registration_attendance_permit_grade_review_and_notices(client):
     signout(client,instr)
     c1=signin(client,"coord1","strong-test-password-12345")
     assert post(client,"/platform/reports/1/review",c1,decision="approved",comment="").status_code==303
+    aggregate_path="/platform/aggregates?period=monthly&anchor=2026-11-06&year_id=1"
+    assert '/platform/attachments/1/view' not in client.get(aggregate_path).text
     assert post(client,"/platform/attachments/1/select",c1).status_code==303
     assert client.get("/platform/attachments/1/view").status_code==200
+    assert '/platform/attachments/1/view' in client.get(aggregate_path).text
     assert post(client,"/platform/grades/1/approve",c1).status_code==303
     assert "17.50" in client.get("/platform/learners/1").text
     permit=post(client,"/platform/learners/1/permit",c1,reason="اطلعت على أسباب الغياب وقبلتها")
