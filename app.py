@@ -7,7 +7,7 @@ import os
 import secrets
 import hashlib
 import hmac
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -192,6 +192,18 @@ def login(request: Request, username: Annotated[str, Form()], password: Annotate
           db: Session = Depends(get_db)):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
+    from platform_v2_models import LoginAttempt, now
+    # Only keyed pseudonymous fingerprints are persisted, never raw source IP
+    # addresses or entered usernames. A separate bucket is kept per peer+name.
+    peer = request.client.host if request.client else "unknown"
+    fingerprint = hmac.new(APP_SECRET.encode("utf-8"),
+        (peer + "\\0" + username.strip().casefold()).encode("utf-8"),
+        hashlib.sha256).hexdigest()
+    moment = now()
+    attempt = db.get(LoginAttempt, fingerprint)
+    if attempt and attempt.locked_until and attempt.locked_until > moment:
+        return render(request, 'login.html', page='login',
+                      error='تعذّر تسجيل الدخول مؤقتًا. حاول بعد عدة دقائق.')
     is_admin = (hmac.compare_digest(username, ADMIN_USERNAME) and
                 verify_password(password, ADMIN_PASSWORD_HASH))
     staff = None
@@ -199,7 +211,20 @@ def login(request: Request, username: Annotated[str, Form()], password: Annotate
         from platform_v2 import authenticate_staff
         staff = authenticate_staff(db, username, password)
     if not is_admin and staff is None:
+        if not attempt:
+            attempt = LoginAttempt(key_hash=fingerprint, failures=0, first_at=moment)
+            db.add(attempt)
+        if moment - attempt.first_at > timedelta(minutes=15):
+            attempt.failures = 0
+            attempt.first_at = moment
+        attempt.failures += 1
+        if attempt.failures >= 5:
+            attempt.locked_until = moment + timedelta(minutes=10)
+        db.commit()
         return render(request, 'login.html', page='login', error='اسم المستخدم أو كلمة المرور غير صحيحين.')
+    if attempt:
+        db.delete(attempt)
+        db.commit()
     request.session.clear()
     request.session['authenticated'] = True
     request.session['csrf'] = secrets.token_urlsafe(32)
