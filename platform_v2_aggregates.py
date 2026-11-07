@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import app, get_db
 from platform_v2 import actor, center_allowed, e, page, table
-from platform_v2_models import Attendance, Center, Enrollment, SessionDay, SessionReport, Slot, Track, Year
+from platform_v2_models import Attachment, Attendance, Center, Enrollment, SessionDay, SessionReport, Slot, Track, Year
 
 def period_bounds(period:str,anchor:date):
     if period=="weekly":
@@ -79,6 +79,31 @@ def aggregate_page(request:Request,period:str="weekly",anchor:date|None=None,yea
         for t in tracks:
             ss=[s for s in relevant if s.track_id==t.id]
             body+=f'<section><h2>المسلك: {e(t.name)}</h2>{stats_html(approved_stats(db,ss,start,end))}</section>'
+        if user["role"] in ("admin", "coordinator"):
+            selected = []
+            for evidence in db.scalars(select(Attachment).where(Attachment.select_for_summary.is_(True))).all():
+                report = db.get(SessionReport, evidence.report_id)
+                if not report or report.status != "approved":
+                    continue
+                session = db.get(SessionDay, report.session_id)
+                if (session and start <= session.held_on <= end
+                        and session.slot_id in {item.id for item in relevant}):
+                    selected.append(evidence)
+            if selected:
+                body += '<section><h2>مرفقات مختارة من المنسق</h2>'
+                documents = []
+                for evidence in selected:
+                    link = f'/platform/attachments/{evidence.id}/download'
+                    if evidence.content_type.startswith("image/"):
+                        body += (f'<figure><img alt="{e(evidence.original_name)}" '
+                                 f'src="/platform/attachments/{evidence.id}/view" '
+                                 'style="max-width:95%;max-height:260px">'
+                                 f'<figcaption>{e(evidence.original_name)}</figcaption></figure>')
+                    else:
+                        documents.append(f'<li><a href="{link}">{e(evidence.original_name)}</a></li>')
+                if documents:
+                    body += '<h3>الوثائق المرفقة في الملحق</h3><ul>' + ''.join(documents) + '</ul>'
+                body += '</section>'
         accessible_centers.append(center.id)
     if user["role"]=="admin" and accessible_centers:
         combined=[s for s in all_slots if s.center_id in accessible_centers]
