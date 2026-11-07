@@ -26,6 +26,12 @@ jobs:
       - run: grep -q 'ROW LEVEL SECURITY' /tmp/noor-v2-schema.sql
       - name: Package reviewed schema SQL for release preparation
         run: cp /tmp/noor-v2-schema.sql ./release-candidate-v2-schema.sql
+      - name: Expose non-secret migration SQL in release audit log
+        shell: bash
+        run: |
+          echo 'NOOR_RELEASE_SCHEMA_BEGIN'
+          cat /tmp/noor-v2-schema.sql
+          echo 'NOOR_RELEASE_SCHEMA_END'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: v2-migration-${{ github.sha }}
