@@ -444,7 +444,18 @@ def slot_conflict(db:Session,slot:Slot):
                             Slot.canceled.is_(False),
                             or_(Slot.staff_id==slot.staff_id,Slot.track_id==slot.track_id))
     for other in db.scalars(query).all():
-        if other.id!=slot.id and overlaps(other,slot):return other
+        if other.id==slot.id or not overlaps(other,slot):
+            continue
+        # An exceptional make-up may replace a recurring occurrence only after
+        # that exact date has been cancelled and audited by the coordinator.
+        if slot.specific_date and not other.specific_date:
+            canceled=db.scalar(select(SessionDay).where(
+                SessionDay.slot_id==other.id,
+                SessionDay.held_on==slot.specific_date,
+                SessionDay.status=="canceled"))
+            if canceled:
+                continue
+        return other
     return None
 
 @app.get("/platform/schedule",response_class=HTMLResponse)
@@ -456,6 +467,11 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
     for s in slots:
         c=db.get(Center,s.center_id);t=db.get(Track,s.track_id);staff=db.get(Staff,s.staff_id)
         action=form("/platform/sessions",csrf,field("slot_id","رقم الحصة",value=s.id)+field("held_on","التاريخ","date"),"فتح الحصة") if not s.canceled else "ملغاة"
+        if user["role"]=="coordinator" and not s.canceled:
+            action+=form(f"/platform/schedule/{s.id}/cancel-day",csrf,
+                field("held_on","تاريخ الحصة الملغاة","date")+
+                area("reason","سبب الإلغاء / التأجيل المعلل"),
+                "إلغاء حصة واحدة دون احتساب الغياب")
         rows.append([e(c.name),e(t.name),e(s.subject),e("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()[s.weekday]),
                      e(s.starts_at+"–"+s.ends_at),e(staff.full_name),action])
     body='<section><h2>الجدول الأسبوعي وحصص الاستثناء</h2>'+table(["المركز","المسلك","المادة","اليوم","الساعة","المؤطر","العمل"],rows)+'</section>'
@@ -526,6 +542,8 @@ def open_session(request:Request,token:str=Form(alias="_csrf"),slot_id:int=Form(
     if db.scalar(select(Closure).where(Closure.center_id==slot.center_id,Closure.closed_on==held_on)):
         raise HTTPException(409,"هذا اليوم مغلق؛ لا يُحتسب الغياب")
     item=db.scalar(select(SessionDay).where(SessionDay.slot_id==slot.id,SessionDay.held_on==held_on))
+    if item and item.status=="canceled":
+        raise HTTPException(409,"الحصة ملغاة لهذا التاريخ ولا يُحتسب الغياب")
     if not item:
         if user["id"]!=slot.staff_id and user["role"] not in ("admin","coordinator"):
             raise HTTPException(403)
