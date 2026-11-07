@@ -65,7 +65,10 @@ def actor(request: Request, db: Session = Depends(get_db)):
     uid = request.session.get("staff_id")
     user = db.get(Staff, uid) if isinstance(uid, int) else None
     if not user or not user.enabled or user.session_version != request.session.get("session_version"):
-        raise HTTPException(403, "الحساب معطل أو انتهت صلاحية الجلسة. يرجى إعادة تسجيل الدخول.")
+        # A stale or revoked staff cookie must never strand the user on a JSON error.
+        # Clear the invalid session so /login can render instead of looping back here.
+        request.session.clear()
+        raise HTTPException(303, headers={"Location": "/login"})
     return {"role": user.role, "name": user.full_name, "id": user.id,
             "assignments": db.scalars(select(Assignment).where(Assignment.staff_id == user.id)).all()}
 
