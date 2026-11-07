@@ -1,0 +1,32 @@
+name: Production smoke — Noor Al Amal
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/production-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production health, database and login page
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://noor-alamal-python-reports.vercel.app"
+          echo "Checking production health..."
+          curl --fail-with-body --silent --show-error --location --retry 2 --retry-delay 3 --max-time 45 "$BASE/health" -o /tmp/health.json
+          python - <<'PY'
+          import json
+          with open('/tmp/health.json', encoding='utf-8') as f:
+              result = json.load(f)
+          assert result.get('service') == 'noor-alamal', 'Unexpected service in /health'
+          assert result.get('status') == 'ready', f"Health is not ready: {result.get('status')}"
+          print('Production app /health=ready and database reachable')
+          PY
+          echo "Checking login page..."
+          curl --fail-with-body --silent --show-error --location --retry 2 --retry-delay 3 --max-time 45 "$BASE/login" -o /tmp/login.html
+          grep -q -i 'password\|كلمة المرور\|تسجيل الدخول' /tmp/login.html
+          echo "Production login page available"
