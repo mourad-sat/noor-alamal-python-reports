@@ -294,6 +294,7 @@ class AttendanceCorrection(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     attendance_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_attendance")))
     requested_by: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")))
+    old_status: Mapped[str] = mapped_column(String(16))
     new_status: Mapped[str] = mapped_column(String(16))
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending")
