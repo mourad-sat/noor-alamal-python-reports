@@ -2,7 +2,11 @@ name: Production smoke — Noor Al Amal
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/production-smoke.yml"]
+    paths:
+      - ".github/workflows/production-smoke.yml"
+      - "app.py"
+      - "platform_v2*.py"
+      - "templates/**"
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,3 +36,8 @@ jobs:
           curl --fail-with-body --silent --show-error --location --retry 2 --retry-delay 3 --max-time 45 "$BASE/login" -o /tmp/login.html
           grep -q -i 'password\|كلمة المرور\|تسجيل الدخول' /tmp/login.html
           echo "Production login page available"
+          echo "Checking the new main entry..."
+          root_code=$(curl --silent --show-error --max-time 45 --output /dev/null --dump-header /tmp/root-headers -w '%{http_code}' "$BASE/")
+          test "$root_code" = "303" || { echo "Root should redirect to login for unauthenticated visitors (got $root_code)"; exit 1; }
+          grep -qi '^location: /login' /tmp/root-headers
+          echo "Root login protection and new entry verified"
