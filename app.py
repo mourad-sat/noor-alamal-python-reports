@@ -335,11 +335,20 @@ def report_edit(request: Request, report_id: int, token: Annotated[str, Form(ali
 
 @app.post('/reports/{report_id}/delete')
 def report_delete(request: Request, report_id: int, token: Annotated[str, Form(alias='_csrf')],
+                  reason: Annotated[str, Form()], confirmation: Annotated[str, Form()],
                   _: None = Depends(auth_required), db: Session = Depends(get_db)):
     check_csrf(request, token)
+    if confirmation.strip() != 'حذف التقرير' or len(reason.strip()) < 10:
+        raise HTTPException(422, 'تأكيد الحذف النهائي وتعليله إلزاميان')
     report = db.get(Report, report_id)
     if report is None: raise HTTPException(404, 'Report not found')
-    db.delete(report); db.commit()
+    from platform_v2_models import Audit
+    proof = hmac.new(APP_SECRET.encode(), reason.strip().encode(), hashlib.sha256).hexdigest()[:16]
+    db.delete(report)
+    db.add(Audit(actor=ADMIN_USERNAME, action='legacy_report_erasure',
+                 resource='report', resource_id=report_id,
+                 reason='reason_digest=' + proof))
+    db.commit()
     return RedirectResponse('/reports', status_code=303)
 
 @app.get('/absences', response_class=HTMLResponse)
