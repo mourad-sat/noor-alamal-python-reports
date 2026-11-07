@@ -136,6 +136,9 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
 
     # The legacy absence table has no learner FK; remove exact-name records.
     db.execute(delete(Absence).where(Absence.learner_name==learner.full_name))
+    # System notifications sometimes display the learner's internal identifier.
+    db.execute(delete(Notification).where(
+        Notification.message.like(f"%المستفيد رقم {learner.id}%")))
     scrub_prose(db,learner,enrollments)
     for model,ids in [
         (GradeCorrection,[x.id for x in changes]),
@@ -168,7 +171,8 @@ def erase_page(request:Request,learner_id:int|None=None,
     require_role(user,"admin")
     body='<section><h2>حذف نهائي مقيد بإدارة الجمعية</h2>'
     body+='<p>الحذف يشمل ملفات المستفيد ونقطه وغيابه وقراراته وإشعاراته ورموز QR. '
-    body+='قبل التنفيذ يجب التأكد من معالجة الصور والوثائق المشتركة والنسخ الورقية والاحتياطية.</p>'
+    body+='قبل التنفيذ يجب التأكد من معالجة الصور والوثائق المشتركة والنسخ الورقية والاحتياطية. '
+    body+='النسخ الاحتياطية القديمة لا تُمحى من هذا النموذج وتحتاج إلى سياسة احتفاظ واستعادة تمنع إرجاع المعلومات المحذوفة.</p>'
     body+=form("/platform/privacy/erase",request.session["csrf"],
           field("learner_id","الرقم الداخلي للمستفيد","number",value=learner_id or "",extra='min="1"')+
           choose("category","الفئة القانونية",ERASURE_CATEGORIES)+
