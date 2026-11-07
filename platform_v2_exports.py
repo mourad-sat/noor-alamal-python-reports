@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app import app, get_db
 from platform_v2 import (actor, assert_csrf, e, page, form, choose, center_options,
                          tracks_options, require_role, transcript, table, center_allowed, log)
-from platform_v2_models import Assessment, Center, DocumentProof, Enrollment, Grade, Learner, Track, Year
+from platform_v2_models import Assessment, Attendance, Center, DocumentProof, Enrollment, Grade, Learner, SessionDay, SessionReport, SessionReportProof, Slot, Track, Year
 
 BASE_URL = os.environ.get("PUBLIC_BASE_URL","https://noor-alamal-python-reports.vercel.app").rstrip("/")
 
@@ -37,6 +37,25 @@ def canonical_fingerprint(db:Session,en:Enrollment,start:date|None,end:date|None
             items.append([a.id,a.subject,a.title,a.held_on.isoformat(),str(a.coefficient),str(g.score)])
     canonical=json.dumps([l.full_name,en.year_id,en.center_id,en.track_id,items],ensure_ascii=False,separators=(",",":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+def report_fingerprint(db:Session,report:SessionReport):
+    """Hash the complete approved official report, including attendance totals."""
+    day=db.get(SessionDay,report.session_id)
+    slot=db.get(Slot,day.slot_id)
+    records=db.scalars(select(Attendance).where(Attendance.session_id==day.id)).all()
+    counts=sorted((str(a.id),str(a.enrollment_id),a.status) for a in records)
+    details=[
+        report.id,report.status,report.author_id,report.subject,
+        report.objectives,report.activities,report.results,
+        report.challenges,report.recommendations,
+        report.reviewed_by,
+        report.reviewed_at.isoformat() if report.reviewed_at else "",
+        day.held_on.isoformat(),day.status,slot.id,slot.center_id,
+        slot.track_id,slot.subject,slot.starts_at,slot.ends_at,counts,
+    ]
+    payload=json.dumps(details,ensure_ascii=False,separators=(",",":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
 
 def qr_svg(url:str):
     qr=segno.make(url,error="m")
@@ -134,10 +153,16 @@ def verify_document(token_value:str,db:Session=Depends(get_db)):
         if enrollment:
             current=canonical_fingerprint(db,enrollment,record.period_start,record.period_end)
             valid=secrets.compare_digest(current,record.fingerprint)
-    state="الوثيقة مطابقة للبيانات الرسمية المعتمدة" if valid else "تعذر التحقق: الوثيقة غير صالحة أو تغيرت بياناتها"
+    if not record:
+        proof=db.scalar(select(SessionReportProof).where(SessionReportProof.token_hash==sha))
+        if proof:
+            report=db.get(SessionReport,proof.report_id)
+            if report and report.status=="approved":
+                valid=secrets.compare_digest(report_fingerprint(db,report),proof.fingerprint)
+    state="الرمز مسجل والبيانات الإلكترونية المعتمدة لم تتغير" if valid else "تعذر التحقق: الوثيقة غير صالحة أو تغيرت بياناتها"
     fg="#177d43" if valid else "#b02b38"
     return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="robots" content="noindex,nofollow"><title>التحقق من وثيقة جمعية نور الأمل</title></head>
 <body style="font-family:Tahoma,Arial;text-align:center;padding:50px"><h1>جمعية نور الأمل</h1>
-<h2 style="color:{fg}">{e(state)}</h2><p>هذه الصفحة تعرض حالة المطابقة فقط، ولا تنشر هوية المستفيد أو نقطه.</p>
+<h2 style="color:{fg}">{e(state)}</h2><p>هذه الصفحة لا تنشر هوية المستفيد أو نقطه. التحقق من الرمز لا يثبت أن المحتوى الورقي لم يُعدَّل؛ تُقارن النسخة المطبوعة بالأصل المعتمد عند الحاجة.</p>
 </body></html>''')
