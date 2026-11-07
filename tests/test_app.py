@@ -115,3 +115,25 @@ def test_health_rejects_incomplete_database_schema(client, monkeypatch):
     result = client.get('/health')
     assert result.status_code == 503
     assert result.json()['status'] == 'migration-required'
+
+
+def test_repeated_login_attempts_are_temporarily_limited_without_raw_ip(client):
+    from datetime import timedelta
+    from sqlalchemy.orm import Session
+    import app
+    from platform_v2_models import LoginAttempt, now
+    for i in range(5):
+        result=client.post('/login',data={'username':'admin','password':'wrong-password'})
+        assert result.status_code==200
+    blocked=client.post('/login',data={'username':'admin','password':'correct-password'})
+    assert blocked.status_code==200
+    assert 'مؤقتًا' in blocked.text
+    with Session(app.engine) as session:
+        rows=session.query(LoginAttempt).all()
+        assert len(rows)==1
+        assert len(rows[0].key_hash)==64
+        assert 'admin' not in rows[0].key_hash
+        rows[0].locked_until=now()-timedelta(minutes=1)
+        session.commit()
+    allowed=client.post('/login',data={'username':'admin','password':'correct-password'})
+    assert allowed.status_code==303
