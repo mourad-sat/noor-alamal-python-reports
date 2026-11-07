@@ -67,6 +67,11 @@ def attachments_page(report_id:int,request:Request,db:Session=Depends(get_db),us
         action=""
         if user["role"]=="coordinator" and report.status=="approved":
             action=form(f"/platform/attachments/{item.id}/select",csrf,"","إلغاء الاختيار" if item.select_for_summary else "إدراج بالتقرير الدوري")
+        if user["role"]=="admin":
+            action+=form(f"/platform/attachments/{item.id}/delete",csrf,
+                '<input name="confirmation" value="" placeholder="اكتب: حذف المرفق" required>'
+                + __import__("platform_v2").area("reason","سبب حذف المرفق (إلزامي)"),
+                "حذف المرفق نهائيًا")
         rows.append([link,e(item.content_type),e(round(item.byte_size/1048576,2)),e(summary),action])
     body=f'<section><h2>مرفقات التقرير رقم {report.id}</h2><p>المرفقات سرية. لا تدخل تلقائيًا في التقارير الدورية؛ المنسق يحددها يدويًا بعد المصادقة على تقرير الحصة.</p>{table(["الملف","الصيغة","الحجم MB","للتقرير الدوري","اختيار المنسق"],rows)}</section>'
     if report.status in ("draft","returned") and user["id"]==report.author_id:
@@ -133,3 +138,25 @@ def view_selected_image(attachment_id:int,db:Session=Depends(get_db),user=Depend
         raise HTTPException(403,"هذه الصورة لم يخترها المنسق")
     return Response(content=load_attachment(db,item),media_type=item.content_type,
         headers={"Cache-Control":"no-store","Content-Security-Policy":"default-src 'none'; sandbox"})
+
+
+@app.post("/platform/attachments/{attachment_id}/delete")
+def delete_attachment_admin(attachment_id:int,request:Request,
+      token:str=Form(alias="_csrf"),reason:str=Form(),confirmation:str=Form(),
+      db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin");assert_csrf(request,token)
+    if confirmation.strip()!="حذف المرفق" or len(reason.strip())<10:
+        raise HTTPException(422,"تأكيد الحذف وتعليله إلزاميان")
+    item,report,slot=attachment_access(db,user,attachment_id)
+    blob=db.scalar(select(AttachmentBlob).where(AttachmentBlob.attachment_id==item.id))
+    if blob:db.delete(blob)
+    db.delete(item)
+    import hashlib, hmac
+    from app import APP_SECRET
+    from platform_v2_models import Audit
+    stamp=hmac.new(APP_SECRET.encode(),reason.strip().encode(),hashlib.sha256).hexdigest()[:16]
+    # The audit receipt never stores a filename or personal details.
+    db.add(Audit(actor=user["name"],action="attachment_erasure",
+                 resource="privacy",resource_id=0,reason=f"reason_digest={stamp}"))
+    db.commit()
+    return RedirectResponse(f"/platform/reports/{report.id}/attachments",status_code=303)
