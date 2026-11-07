@@ -47,7 +47,7 @@ def test_admin_erasure_cleans_personal_relations_and_invalidates_public_qr(clien
     printed=post(client,"/platform/exports/grades/print",admin,year_id=1,center_id=1,track_id=1)
     assert printed.status_code==200
     token=re.search(r'/verify/([A-Za-z0-9_-]{30,})',printed.text).group(1)
-    assert "مطابقة للبيانات الرسمية" in client.get(f"/verify/{token}").text
+    assert "البيانات الإلكترونية المعتمدة" in client.get(f"/verify/{token}").text
     # Shared classroom attachment cannot be silently removed by learner deletion.
     blocked=post(client,"/platform/privacy/erase",admin,learner_id=1,
           category="data_subject",reason="طلب قانوني موثق لحذف البيانات",confirmation="حذف نهائي")
