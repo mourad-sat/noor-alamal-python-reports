@@ -1,0 +1,70 @@
+name: Test Noor Al Amal platform changes
+
+on:
+  push:
+    branches: ["feature/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt pytest==8.3.5 httpx==0.28.1 openpyxl==3.1.5 cryptography==46.0.3
+      - run: python -m compileall -q app.py platform_v2*.py scripts/generate_platform_schema.py
+      - run: python scripts/generate_platform_schema.py > /tmp/noor-v2-schema.sql
+      - run: grep -q 'ROW LEVEL SECURITY' /tmp/noor-v2-schema.sql
+      - name: Package reviewed schema SQL for release preparation
+        run: cp /tmp/noor-v2-schema.sql ./release-candidate-v2-schema.sql
+      - name: Expose non-secret migration SQL in release audit log
+        shell: bash
+        run: |
+          echo 'NOOR_RELEASE_SCHEMA_BEGIN'
+          cat /tmp/noor-v2-schema.sql
+          echo 'NOOR_RELEASE_SCHEMA_END'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v2-migration-${{ github.sha }}
+          path: release-candidate-v2-schema.sql
+          retention-days: 14
+      - run: pytest -q
+
+  postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-temp-password-not-production
+          POSTGRES_DB: noor_stage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d noor_stage"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_TEST_URL: postgresql://postgres:ci-temp-password-not-production@localhost:5432/noor_stage
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt httpx==0.28.1 cryptography==46.0.3
+      - run: python scripts/check_postgres_schema_ci.py
+      - run: bash scripts/backup_restore_smoke_ci.sh

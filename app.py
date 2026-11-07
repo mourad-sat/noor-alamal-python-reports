@@ -7,7 +7,7 @@ import os
 import secrets
 import hashlib
 import hmac
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, or_, select, text
+from sqlalchemy import Date, DateTime, Integer, MetaData, String, Text, create_engine, func, inspect, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import NullPool
@@ -75,7 +75,13 @@ engine = None
 if DATABASE_URL:
     opts = {'pool_pre_ping': True}
     if PG:
-        opts.update(poolclass=NullPool, connect_args={'connect_timeout': 12, 'sslmode': 'require'})
+        ssl_mode = os.getenv('NOOR_DB_SSLMODE', 'require')
+        if ssl_mode not in ('require', 'verify-ca', 'verify-full', 'disable'):
+            raise RuntimeError('Invalid database TLS mode')
+        if IS_VERCEL and ssl_mode == 'disable':
+            raise RuntimeError('Database TLS must not be disabled on Vercel')
+        opts.update(poolclass=NullPool,
+                    connect_args={'connect_timeout': 12, 'sslmode': ssl_mode})
     else:
         opts.update(connect_args={'check_same_thread': False})
     engine = create_engine(DATABASE_URL, **opts)
@@ -85,10 +91,14 @@ def initialize_database():
     global _db_ready
     if _db_ready or engine is None:
         return
-    # Production PostgreSQL schema is pre-provisioned through a controlled migration.
-    # Do not require CREATE SCHEMA privileges from the runtime database account.
-    with engine.begin() as conn:
-        Base.metadata.create_all(conn)
+    # Production schemas are changed only by reviewed migrations. Runtime
+    # requests must never create private learner tables without RLS protection.
+    if PG:
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    else:
+        with engine.begin() as conn:
+            Base.metadata.create_all(conn)
     _db_ready = True
 
 def get_db():
@@ -109,6 +119,13 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
 
 def auth_required(request: Request):
+    if not request.session.get('authenticated'):
+        raise HTTPException(status_code=303, headers={'Location': '/login'}, detail='Authentication required')
+    # The legacy report/absence endpoints are intentionally restricted to admin.
+    if request.session.get('role', 'admin') != 'admin':
+        raise HTTPException(status_code=403, detail='This page is restricted to administration')
+
+def logged_in_required(request: Request):
     if not request.session.get('authenticated'):
         raise HTTPException(status_code=303, headers={'Location': '/login'}, detail='Authentication required')
 
@@ -148,6 +165,16 @@ def health():
         initialize_database()
         with engine.connect() as conn:
             conn.execute(text('SELECT 1'))
+            # Release readiness requires all tables, not just an open connection.
+            # This detects a missing v2 migration before any real user logs in.
+            names = [table.name for table in Base.metadata.tables.values()]
+            inspection = inspect(conn)
+            missing = [name for name in names if not inspection.has_table(name, schema=DB_SCHEMA)]
+            if missing:
+                return JSONResponse(
+                    {'service': 'noor-alamal', 'status': 'migration-required'},
+                    status_code=503,
+                )
     except (SQLAlchemyError, OSError):
         return JSONResponse({'service': 'noor-alamal', 'status': 'database-unavailable'}, status_code=503)
     return {'service': 'noor-alamal', 'status': 'ready'}
@@ -163,22 +190,58 @@ def login_page(request: Request):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
     if request.session.get('authenticated'):
-        return RedirectResponse('/', status_code=303)
+        return RedirectResponse('/platform' if request.session.get('role') != 'admin' else '/', status_code=303)
     return render(request, 'login.html', page='login')
 
 @app.post('/login')
-def login(request: Request, username: Annotated[str, Form()], password: Annotated[str, Form()]):
+def login(request: Request, username: Annotated[str, Form()], password: Annotated[str, Form()],
+          db: Session = Depends(get_db)):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
-    if not (hmac.compare_digest(username, ADMIN_USERNAME) and verify_password(password, ADMIN_PASSWORD_HASH)):
+    from platform_v2_models import LoginAttempt, now
+    # Only keyed pseudonymous fingerprints are persisted, never raw source IP
+    # addresses or entered usernames. A separate bucket is kept per peer+name.
+    peer = request.client.host if request.client else "unknown"
+    fingerprint = hmac.new(APP_SECRET.encode("utf-8"),
+        (peer + "\\0" + username.strip().casefold()).encode("utf-8"),
+        hashlib.sha256).hexdigest()
+    moment = now()
+    attempt = db.get(LoginAttempt, fingerprint)
+    if attempt and attempt.locked_until and attempt.locked_until > moment:
+        return render(request, 'login.html', page='login',
+                      error='تعذّر تسجيل الدخول مؤقتًا. حاول بعد عدة دقائق.')
+    is_admin = (hmac.compare_digest(username, ADMIN_USERNAME) and
+                verify_password(password, ADMIN_PASSWORD_HASH))
+    staff = None
+    if not is_admin:
+        from platform_v2 import authenticate_staff
+        staff = authenticate_staff(db, username, password)
+    if not is_admin and staff is None:
+        if not attempt:
+            attempt = LoginAttempt(key_hash=fingerprint, failures=0, first_at=moment)
+            db.add(attempt)
+        if moment - attempt.first_at > timedelta(minutes=15):
+            attempt.failures = 0
+            attempt.first_at = moment
+        attempt.failures += 1
+        if attempt.failures >= 5:
+            attempt.locked_until = moment + timedelta(minutes=10)
+        db.commit()
         return render(request, 'login.html', page='login', error='اسم المستخدم أو كلمة المرور غير صحيحين.')
+    if attempt:
+        db.delete(attempt)
+        db.commit()
     request.session.clear()
     request.session['authenticated'] = True
     request.session['csrf'] = secrets.token_urlsafe(32)
-    return RedirectResponse('/', status_code=303)
+    request.session['role'] = 'admin' if is_admin else staff.role
+    if staff:
+        request.session['staff_id'] = staff.id
+        request.session['session_version'] = staff.session_version
+    return RedirectResponse('/' if is_admin else '/platform', status_code=303)
 
 @app.post('/logout')
-def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None = Depends(auth_required)):
+def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None = Depends(logged_in_required)):
     check_csrf(request, token)
     request.session.clear()
     return RedirectResponse('/login', status_code=303)
@@ -272,11 +335,20 @@ def report_edit(request: Request, report_id: int, token: Annotated[str, Form(ali
 
 @app.post('/reports/{report_id}/delete')
 def report_delete(request: Request, report_id: int, token: Annotated[str, Form(alias='_csrf')],
+                  reason: Annotated[str, Form()], confirmation: Annotated[str, Form()],
                   _: None = Depends(auth_required), db: Session = Depends(get_db)):
     check_csrf(request, token)
+    if confirmation.strip() != 'حذف التقرير' or len(reason.strip()) < 10:
+        raise HTTPException(422, 'تأكيد الحذف النهائي وتعليله إلزاميان')
     report = db.get(Report, report_id)
     if report is None: raise HTTPException(404, 'Report not found')
-    db.delete(report); db.commit()
+    from platform_v2_models import Audit
+    proof = hmac.new(APP_SECRET.encode(), reason.strip().encode(), hashlib.sha256).hexdigest()[:16]
+    db.delete(report)
+    db.add(Audit(actor=ADMIN_USERNAME, action='legacy_report_erasure',
+                 resource='report', resource_id=report_id,
+                 reason='reason_digest=' + proof))
+    db.commit()
     return RedirectResponse('/reports', status_code=303)
 
 @app.get('/absences', response_class=HTMLResponse)
@@ -375,3 +447,14 @@ def export_absences(_: None = Depends(auth_required), db: Session = Depends(get_
     items = db.scalars(select(Absence).order_by(Absence.absence_date.desc()).limit(20000)).all()
     return make_csv('noor-absences.csv', ['الرقم', 'التاريخ', 'اسم المستفيد', 'المجموعة', 'سبب الغياب', 'الحالة', 'ملاحظات'], [
         [a.id, a.absence_date, a.learner_name, a.group_name, a.reason, 'مبرر' if a.justified else 'غير مبرر', a.notes] for a in items])
+
+# Load the role-restricted second-generation portal after core models and routes.
+import platform_v2  # noqa: E402,F401
+import platform_v2_imports  # noqa: E402,F401
+import platform_v2_exports  # noqa: E402,F401
+import platform_v2_aggregates  # noqa: E402,F401
+import platform_v2_attachments  # noqa: E402,F401
+import platform_v2_attendance_corrections  # noqa: E402,F401
+import platform_v2_privacy  # noqa: E402,F401
+import platform_v2_schedule_exceptions  # noqa: E402,F401
+import platform_v2_report_print  # noqa: E402,F401

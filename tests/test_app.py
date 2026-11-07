@@ -18,8 +18,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv('ADMIN_USERNAME', 'admin')
     monkeypatch.delenv('VERCEL', raising=False)
     sys.path.insert(0, str(PROJECT))
-    if 'app' in sys.modules:
-        del sys.modules['app']
+    for name in ('platform_v2', 'platform_v2_models', 'platform_v2_imports', 'platform_v2_exports', 'platform_v2_aggregates', 'platform_v2_attachments', 'platform_v2_attendance_corrections', 'platform_v2_privacy', 'platform_v2_schedule_exceptions', 'platform_v2_report_print', 'app'):
+        sys.modules.pop(name, None)
     application = importlib.import_module('app')
     with TestClient(application.app, follow_redirects=False) as client:
         yield client
@@ -71,7 +71,13 @@ def test_report_workflow_and_exports(client):
     changed = {**report, 'subject': 'عنوان معدّل'}
     assert client.post(f'/reports/{report_id}/edit', data=changed).status_code == 303
     assert 'عنوان معدّل' in client.get(f'/reports/{report_id}').text
-    assert client.post(f'/reports/{report_id}/delete', data={'_csrf': csrf}).status_code == 303
+    assert client.post(f'/reports/{report_id}/delete', data={
+        '_csrf': csrf, 'reason': 'test', 'confirmation': 'حذف التقرير'
+    }).status_code == 422
+    assert client.post(f'/reports/{report_id}/delete', data={
+        '_csrf': csrf, 'reason': 'حذف التقرير تجريبياً مع تسجيل السبب',
+        'confirmation': 'حذف التقرير'
+    }).status_code == 303
     assert client.get(f'/reports/{report_id}').status_code == 404
 
 
@@ -101,3 +107,49 @@ def test_health_checks_database(client):
     response = client.get('/health')
     assert response.status_code == 200
     assert response.json() == {'service': 'noor-alamal', 'status': 'ready'}
+
+
+def test_health_rejects_incomplete_database_schema(client, monkeypatch):
+    from sqlalchemy import create_engine
+    import app as module
+    incomplete = create_engine('sqlite:///:memory:', connect_args={'check_same_thread': False},
+                               poolclass=__import__('sqlalchemy').pool.StaticPool)
+    module.Report.__table__.create(incomplete)
+    module.Absence.__table__.create(incomplete)
+    monkeypatch.setattr(module, 'engine', incomplete)
+    monkeypatch.setattr(module, '_db_ready', True)
+    result = client.get('/health')
+    assert result.status_code == 503
+    assert result.json()['status'] == 'migration-required'
+
+
+def test_official_association_logo_is_served_in_login_and_navigation(client):
+    image=client.get('/static/noor_official_logo.webp')
+    assert image.status_code == 200
+    assert image.headers.get('content-type','').startswith('image/webp')
+    assert image.content.startswith(b'RIFF') and b'WEBP' in image.content[:20]
+    assert '/static/noor_official_logo.webp' in client.get('/login').text
+    login(client)
+    assert '/static/noor_official_logo.webp' in client.get('/platform').text
+
+
+def test_repeated_login_attempts_are_temporarily_limited_without_raw_ip(client):
+    from datetime import timedelta
+    from sqlalchemy.orm import Session
+    import app
+    from platform_v2_models import LoginAttempt, now
+    for i in range(5):
+        result=client.post('/login',data={'username':'admin','password':'wrong-password'})
+        assert result.status_code==200
+    blocked=client.post('/login',data={'username':'admin','password':'correct-password'})
+    assert blocked.status_code==200
+    assert 'مؤقتًا' in blocked.text
+    with Session(app.engine) as session:
+        rows=session.query(LoginAttempt).all()
+        assert len(rows)==1
+        assert len(rows[0].key_hash)==64
+        assert 'admin' not in rows[0].key_hash
+        rows[0].locked_until=now()-timedelta(minutes=1)
+        session.commit()
+    allowed=client.post('/login',data={'username':'admin','password':'correct-password'})
+    assert allowed.status_code==303
