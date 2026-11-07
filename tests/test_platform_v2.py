@@ -61,6 +61,10 @@ def test_centers_roles_and_cross_center_schedule_conflicts(client):
     ok=post(client,"/platform/schedule",c1,track_id=1,staff_id=3,
           subject="مهني",weekday=4,starts_at="14:00",ends_at="16:00",reason="الجدول الأسبوعي")
     assert ok.status_code==303,ok.text[:300]
+    # Same group cannot attend two separate subjects at the same time.
+    overlap_group=post(client,"/platform/schedule",c1,track_id=1,staff_id=4,
+          subject="الرياضيات",weekday=4,starts_at="15:00",ends_at="16:30",reason="جدول تأهيل تربوي")
+    assert overlap_group.status_code==409,overlap_group.text[:300]
     signout(client,c1)
     c2=signin(client,"coord2","strong-test-password-12345")
     conflict=post(client,"/platform/schedule",c2,track_id=2,staff_id=3,
