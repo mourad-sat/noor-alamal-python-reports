@@ -50,6 +50,25 @@ def setup_org(client):
     return admin_csrf
 
 
+def test_stale_staff_session_redirects_to_login(client):
+    admin = setup_org(client)
+    signout(client, admin)
+    signin(client, "coord1", "strong-test-password-12345")
+    # Simulate an administrator invalidating an existing staff login.
+    from app import engine
+    from sqlalchemy.orm import Session
+    from platform_v2_models import Staff
+    with Session(engine) as db:
+        staff = db.get(Staff, 1)
+        staff.session_version += 1
+        db.commit()
+    expired = client.get("/platform")
+    assert expired.status_code == 303
+    assert expired.headers["location"] == "/login"
+    assert client.get("/login").status_code == 200
+    assert client.get("/platform").headers["location"] == "/login"
+
+
 def test_centers_roles_and_cross_center_schedule_conflicts(client):
     admin=setup_org(client)
     assert "مركز حمزة عبد المطلب" in client.get("/platform").text
