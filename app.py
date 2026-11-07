@@ -75,7 +75,13 @@ engine = None
 if DATABASE_URL:
     opts = {'pool_pre_ping': True}
     if PG:
-        opts.update(poolclass=NullPool, connect_args={'connect_timeout': 12, 'sslmode': 'require'})
+        ssl_mode = os.getenv('NOOR_DB_SSLMODE', 'require')
+        if ssl_mode not in ('require', 'verify-ca', 'verify-full', 'disable'):
+            raise RuntimeError('Invalid database TLS mode')
+        if IS_VERCEL and ssl_mode == 'disable':
+            raise RuntimeError('Database TLS must not be disabled on Vercel')
+        opts.update(poolclass=NullPool,
+                    connect_args={'connect_timeout': 12, 'sslmode': ssl_mode})
     else:
         opts.update(connect_args={'check_same_thread': False})
     engine = create_engine(DATABASE_URL, **opts)
