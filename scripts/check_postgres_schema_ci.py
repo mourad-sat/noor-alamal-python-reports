@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import psycopg2
 
@@ -94,6 +95,7 @@ os.environ["ADMIN_PASSWORD_HASH"] = (
 os.environ["ADMIN_USERNAME"] = "ci-admin"
 os.environ.pop("VERCEL", None)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app as site
 
 site.Report.__table__.create(bind=site.engine, checkfirst=True)
