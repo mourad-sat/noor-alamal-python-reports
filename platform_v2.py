@@ -1145,7 +1145,7 @@ def print_notice(notice_id:int,request:Request,db:Session=Depends(get_db),user=D
 <title>إشعار رسمي رقم {n.id}</title><style>body{{font-family:Tahoma,Arial,sans-serif;max-width:750px;
 margin:45px auto;font-size:18px;line-height:2.1}}header{{text-align:center;border-bottom:2px solid #236ca3}}
 main{{margin-top:40px}}footer{{display:flex;justify-content:space-between;margin-top:100px}}
-@media print{{button{{display:none}}}}</style></head><body><header><h2>جمعية نور الأمل</h2>
+@media print{{button{{display:none}}}}</style></head><body><header><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل" width="115" height="102"><h2>جمعية نور الأمل</h2>
 <div>برنامج الفرصة الثانية – الجيل الجديد</div><p>{e(center)}</p></header>
 <main><h3>إشعار رقم {n.id} · {e(n.kind)}</h3><p>المستفيد(ة): <strong>{e(name)}</strong></p>
 <p>{e(n.body)}</p><p>تاريخ الإصدار: {e(n.issued_at.date() if n.issued_at else "")}</p></main>
