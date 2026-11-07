@@ -17,6 +17,25 @@ development branch `feature/platform-v2-20261106`.
 - Supabase security and health advisors had no findings for the **current** database.
   They do not validate the unreleased v2 schema.
 
+## Progress verified on 2026-11-07
+
+- [x] All application unit and integration tests pass after implementing
+  stronger login protections, track-level schedule collision checks,
+  signed-off attendance corrections and manually selected evidence.
+- [x] Disposable PostgreSQL 17 integration: **28 private RLS-enabled v2 tables**,
+  **40 foreign-key constraints**, restricted `noor_reports_web` server role,
+  valid admin authentication and FastAPI `/health=ready`.
+- [x] Encrypted PostgreSQL custom-format backup successfully decrypted and
+  **restored into a separate disposable CI database**, including two center records
+  and the private-table RLS flags.
+- [ ] **Production backup not yet verified.** No GitHub Actions production secrets
+  have been configured or exercised by this process, and no retained weekly
+  archive/production restore has been demonstrated.
+- [ ] **Production migration not applied.** The association database still needs
+  a reviewed add-only migration, real DB-role tests and protected release gate.
+- [ ] **Preview still lacks a dedicated live staging database.** CI Postgres is
+  disposable; Vercel Preview must not be connected directly to production data.
+
 ## Blocking release requirements
 
 - [ ] Provision an **isolated testing database and restricted role**. Do not point an
