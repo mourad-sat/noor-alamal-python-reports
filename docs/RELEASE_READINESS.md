@@ -92,6 +92,21 @@ development branch `feature/platform-v2-20261106`.
 - [ ] Do not expose real learner data until backup, recovery and erasure
   restoration requirements are verified.
 
+## Live backup prerequisite test — 2026-11-07 18:46 UTC
+
+- [x] Installed `scripts/backup_crypto.py` and `.github/workflows/weekly-backup.yml`
+  on `main` without merging the v2 application; the legacy site remains functional.
+- [x] Triggered a one-time backup prerequisite check via a workflow-only push.
+- [ ] GitHub Actions run
+  [42402912049](https://github.com/mourad-sat/noor-alamal-python-reports/actions/runs/42402912049)
+  **FAILED because `NOOR_BACKUP_DATABASE_URL` is not configured.**
+  The job stopped before checking `NOOR_BACKUP_FERNET_KEY`, which is also required.
+  No backup artifact was produced, so restoration/retention cannot be declared ready.
+- [ ] The user must set both repository secrets in GitHub Actions without sharing
+  their values in chat. Then rerun by a workflow-file-only push or manually dispatch.
+- [ ] **Do not merge PR #1 or promote v2** until a genuine production backup exists
+  and can be restored in an isolated database.
+
 ## Blocking release requirements
 
 - [ ] Provision an **isolated testing database and restricted role**. Do not point an
