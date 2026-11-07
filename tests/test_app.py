@@ -101,3 +101,17 @@ def test_health_checks_database(client):
     response = client.get('/health')
     assert response.status_code == 200
     assert response.json() == {'service': 'noor-alamal', 'status': 'ready'}
+
+
+def test_health_rejects_incomplete_database_schema(client, monkeypatch):
+    from sqlalchemy import create_engine
+    import app as module
+    incomplete = create_engine('sqlite:///:memory:', connect_args={'check_same_thread': False},
+                               poolclass=__import__('sqlalchemy').pool.StaticPool)
+    module.Report.__table__.create(incomplete)
+    module.Absence.__table__.create(incomplete)
+    monkeypatch.setattr(module, 'engine', incomplete)
+    monkeypatch.setattr(module, '_db_ready', True)
+    result = client.get('/health')
+    assert result.status_code == 503
+    assert result.json()['status'] == 'migration-required'
