@@ -699,6 +699,8 @@ def review_reports(request:Request,db:Session=Depends(get_db),user=Depends(actor
             approve=form(f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"مصادقة") + form(
                 f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع للتصحيح")
         approve+=f' <a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
+        if r.status=="approved":
+            approve+=form(f"/platform/reports/{r.id}/print",csrf,"","تقرير رسمي مع رمز تحقق")
         if user["role"]=="admin":
             approve+=form(f"/platform/reports/{r.id}/erase",csrf,
                 area("reason","السبب المكتوب للحذف النهائي")+
