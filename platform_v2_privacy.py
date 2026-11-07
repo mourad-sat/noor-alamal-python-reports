@@ -134,6 +134,8 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
         if ids:
             db.execute(delete(Audit).where(Audit.resource==resource,Audit.resource_id.in_(ids)))
 
+    # The legacy absence table has no learner FK; remove exact-name records.
+    db.execute(delete(Absence).where(Absence.learner_name==learner.full_name))
     scrub_prose(db,learner,enrollments)
     for model,ids in [
         (GradeCorrection,[x.id for x in changes]),
