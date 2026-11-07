@@ -27,7 +27,7 @@ def client(tmp_path, monkeypatch):
 
 def login(client):
     response = client.post('/login', data={'username': 'admin', 'password': 'correct-password'})
-    assert response.status_code == 303 and response.headers['location'] == '/'
+    assert response.status_code == 303 and response.headers['location'] == '/platform'
     cookie = client.cookies.get('session')
     assert cookie
     from itsdangerous import TimestampSigner
@@ -45,7 +45,11 @@ def test_authentication_and_access_control(client):
     assert client.get('/login').status_code == 200
     assert 'مرحباً بعودتك' in client.post('/login', data={'username': 'admin', 'password': 'wrong'}).text
     csrf = login(client)
-    assert 'لوحة القيادة' in client.get('/').text
+    assert client.get('/').status_code == 303
+    assert client.get('/').headers['location'] == '/platform'
+    assert 'لوحة القيادة' in client.get('/legacy').text
+    assert 'دار الشباب لعيايدة 2' in client.get('/platform').text
+    assert 'مركز حمزة عبد المطلب' in client.get('/platform').text
     assert client.post('/logout', data={'_csrf': 'bad'}).status_code == 403
     assert client.post('/logout', data={'_csrf': csrf}).status_code == 303
     assert client.get('/').status_code == 303

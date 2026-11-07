@@ -13,13 +13,14 @@
 {% else %}
 <div class="app-shell">
   <aside class="sidebar screen-only" aria-label="القائمة الجانبية">
-    <a href="/" class="brand">
+    <a href="/platform" class="brand">
       <img class="association-logo" src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل" width="62" height="55">
       <span><strong>نور الأمل</strong><small>الفرصة الثانية · الجيل الجديد</small></span>
     </a>
     <div class="sidebar-caption">مساحة العمل</div>
     <nav class="nav-list" aria-label="التنقل">
-      <a class="nav-link {% if page=='dashboard' %}active{% endif %}" href="/"><span class="nav-icon">▦</span><span>لوحة القيادة</span></a>
+      <a class="nav-link" href="/platform"><span class="nav-icon">▦</span><span>المنصة الرئيسية للمركزين</span></a>
+      <a class="nav-link {% if page=='dashboard' %}active{% endif %}" href="/legacy"><span class="nav-icon">▤</span><span>لوحة التقارير السابقة</span></a>
       <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='' %}active{% endif %}" href="/reports"><span class="nav-icon">▤</span><span>كل التقارير</span></a>
       <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='training' %}active{% endif %}" href="/reports?kind=training"><span class="nav-icon">◈</span><span>التكوين المهني</span></a>
       <a class="nav-link {% if page=='reports' and request.query_params.get('kind','')=='pedagogical' %}active{% endif %}" href="/reports?kind=pedagogical"><span class="nav-icon">◇</span><span>التأهيل التربوي</span></a>
@@ -28,7 +29,7 @@
     </nav>
     <div class="sidebar-caption second-caption">الإدارة</div>
     <nav class="nav-list">
-      <a class="nav-link" href="/platform"><span class="nav-icon">▦</span><span>المنصة الموسعة</span></a>
+      <a class="nav-link" href="/platform/years"><span class="nav-icon">▦</span><span>السنوات والمسالك</span></a>
       <a class="nav-link" href="/platform/import"><span class="nav-icon">⇧</span><span>استيراد المستفيدين</span></a>
       <a class="nav-link" href="/export/reports.csv"><span class="nav-icon">⇩</span><span>تصدير التقارير CSV</span></a>
       <a class="nav-link" href="/export/absences.csv"><span class="nav-icon">⇩</span><span>تصدير الغياب CSV</span></a>
@@ -43,7 +44,7 @@
       </div>
     </header>
     <main class="content">{% block content %}{% endblock %}</main>
-    <footer class="site-footer screen-only">جمعية نور الأمل · برنامج الفرصة الثانية – الجيل الجديد <span>نظام تدبير التقارير</span></footer>
+    <footer class="site-footer screen-only">جمعية نور الأمل · برنامج الفرصة الثانية – الجيل الجديد <span>التقارير السابقة · <a href="/platform">المنصة الرئيسية</a></span></footer>
   </div>
 </div>
 {% endif %}

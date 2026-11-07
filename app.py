@@ -190,7 +190,7 @@ def login_page(request: Request):
     if not READY:
         return RedirectResponse('/setup', status_code=303)
     if request.session.get('authenticated'):
-        return RedirectResponse('/platform' if request.session.get('role') != 'admin' else '/', status_code=303)
+        return RedirectResponse('/platform', status_code=303)
     return render(request, 'login.html', page='login')
 
 @app.post('/login')
@@ -238,7 +238,7 @@ def login(request: Request, username: Annotated[str, Form()], password: Annotate
     if staff:
         request.session['staff_id'] = staff.id
         request.session['session_version'] = staff.session_version
-    return RedirectResponse('/' if is_admin else '/platform', status_code=303)
+    return RedirectResponse('/platform', status_code=303)
 
 @app.post('/logout')
 def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None = Depends(logged_in_required)):
@@ -246,7 +246,13 @@ def logout(request: Request, token: Annotated[str, Form(alias='_csrf')], _: None
     request.session.clear()
     return RedirectResponse('/login', status_code=303)
 
-@app.get('/', response_class=HTMLResponse)
+@app.get('/')
+def main_entry(request: Request, _: None = Depends(logged_in_required)):
+    # Operational dashboard is the primary app for all authenticated roles.
+    # The previous reports interface remains available at /legacy.
+    return RedirectResponse('/platform', status_code=303)
+
+@app.get('/legacy', response_class=HTMLResponse)
 def dashboard(request: Request, _: None = Depends(auth_required), db: Session = Depends(get_db)):
     counts = {kind: db.scalar(select(func.count()).select_from(Report).where(Report.kind == kind)) or 0 for kind in KIND_LABELS}
     total = sum(counts.values())
