@@ -23,7 +23,7 @@ from platform_v2_models import (
     Assessment, Attachment, AttachmentBlob, Attendance, AttendanceCorrection, Audit, CenterReport,
     Discipline, DocumentProof, Enrollment, ErasureAggregate, Grade,
     GradeCorrection, Incident, Learner, Notice, Notification, Permit,
-    SessionDay, SessionReport, Slot,
+    SessionDay, SessionReport, SessionReportProof, Slot,
 )
 
 ERASURE_CATEGORIES = {
@@ -136,6 +136,15 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
 
     # The legacy absence table has no learner FK; remove exact-name records.
     db.execute(delete(Absence).where(Absence.learner_name==learner.full_name))
+    # Report QR fingerprints of affected sessions may contain prior attendance
+    # details. Revoke such proofs because their underlying record changed.
+    affected_session_ids={item.session_id for item in attendance}
+    if affected_session_ids:
+        report_ids=db.scalars(select(SessionReport.id).where(
+            SessionReport.session_id.in_(affected_session_ids))).all()
+        if report_ids:
+            db.execute(delete(SessionReportProof).where(
+                SessionReportProof.report_id.in_(report_ids)))
     # System notifications sometimes display the learner's internal identifier.
     db.execute(delete(Notification).where(
         Notification.message.like(f"%المستفيد رقم {learner.id}%")))
@@ -219,6 +228,7 @@ def erase_session_report(request:Request,report_id:int,token:str=Form(alias="_cs
     if attachment_ids:
         db.execute(delete(AttachmentBlob).where(AttachmentBlob.attachment_id.in_(attachment_ids)))
         db.execute(delete(Attachment).where(Attachment.id.in_(attachment_ids)))
+    db.execute(delete(SessionReportProof).where(SessionReportProof.report_id==report.id))
     db.execute(delete(Audit).where(Audit.resource=="session_report",Audit.resource_id==report.id))
     db.execute(delete(Audit).where(Audit.resource=="attachment",
                                   Audit.resource_id.in_(attachment_ids)))
