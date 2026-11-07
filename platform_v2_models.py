@@ -287,3 +287,17 @@ class AttachmentBlob(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     attachment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_attachments")),unique=True)
     content: Mapped[bytes] = mapped_column(LargeBinary)
+
+class AttendanceCorrection(Base):
+    """Coordinator-reviewed amendments after a session report was approved."""
+    __tablename__ = "v2_attendance_corrections"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attendance_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_attendance")))
+    requested_by: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")))
+    new_status: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    reviewed_by: Mapped[str] = mapped_column(String(140), default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
