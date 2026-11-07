@@ -310,3 +310,11 @@ class LoginAttempt(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0)
     first_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class ErasureAggregate(Base):
+    """Coarse, non-identifying statistics only. No name, track or center."""
+    __tablename__ = "v2_erasure_aggregates"
+    year_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_years")),primary_key=True)
+    erased_learners: Mapped[int] = mapped_column(Integer,default=0)
+    absent_sessions: Mapped[int] = mapped_column(Integer,default=0)
+    absent_days: Mapped[int] = mapped_column(Integer,default=0)
