@@ -414,3 +414,4 @@ import platform_v2_imports  # noqa: E402,F401
 import platform_v2_exports  # noqa: E402,F401
 import platform_v2_aggregates  # noqa: E402,F401
 import platform_v2_attachments  # noqa: E402,F401
+import platform_v2_attendance_corrections  # noqa: E402,F401
