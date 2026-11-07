@@ -36,6 +36,36 @@ development branch `feature/platform-v2-20261106`.
 - [ ] **Preview still lacks a dedicated live staging database.** CI Postgres is
   disposable; Vercel Preview must not be connected directly to production data.
 
+## Additional development verified on 2026-11-07
+
+- [x] Official **user-provided association logo** installed as a real
+  repository asset, included in login/navigation, guardian notices,
+  grade transcripts and approved session reports.
+- [x] Admin-only permanent learner deletion: delete individually linked
+  records and electronic grade proofs, preserve only coarse per-year counts,
+  and refuse automatic deletion when shared images/documents need manual review.
+- [x] Admin-only deletion of private report attachments and entire session
+  reports, with mandatory reason, explicit confirmation and non-identifying audit.
+- [x] Extraordinary single-session cancellation and makeup workflow for
+  center coordinators, with mandatory reasons and staff notification.
+- [x] Printable approved session report with electronic approver/time,
+  manual signature/stamp fields, and independent QR proof registry.
+- [x] Public QR verification explicitly states that electronic-record
+  integrity is verified; **a copied QR cannot establish physical paper
+  authenticity without comparison against the approved original**.
+- [x] **20 application tests** passed, including privacy, print proofs,
+  role separation and changes to recurring schedules. PostgreSQL
+  migration/smoke and encrypted backup restore also passed on disposable CI.
+- [ ] **Compliance/legal release gate remains open:** encrypted historical
+  backups and previously printed/downloaded copies are not physically
+  erased by the active-database deletion route. Agree a retention,
+  restoration-scrubbing and verified destruction process before real data.
+- [ ] **Production backup remains inactive/unverified** without protected
+  GitHub Actions secrets, an actual scheduled run and real isolated recovery.
+- [ ] **Vercel Preview remains setup-required** until an isolated,
+  functioning non-production database and credentials are configured.
+- [ ] No live production schema migration or `main` merge has occurred.
+
 ## Blocking release requirements
 
 - [ ] Provision an **isolated testing database and restricted role**. Do not point an
@@ -53,11 +83,8 @@ development branch `feature/platform-v2-20261106`.
   backup artifact was created. Keep the encryption key offline.
 - [ ] Test real backup **restoration** to an isolated database, including attachments.
   Confirm retention of **exactly four** latest successful weekly archives.
-- [ ] Implement and validate legally safe permanent learner erasure across all personal
-  records, attachments, legacy data and audit outputs. Plan the handling of previously
-  encrypted backups to prevent restoring erased records. Require administrator rationale.
-- [ ] Confirm final official logo appears on login, dashboards, paper notices and
-  approved documents.
+- [ ] Complete operational legal erasure assurance: app-level erasure and shared-evidence blocker now exist, but the encrypted-backup rotation and restoration-scrub procedure still require verification.
+- [x] Confirm official logo appears on login, dashboards, paper notices and approved documents.
 - [ ] Confirm the bulk grade export creates an acceptable **PDF** document, and review
   whether a downloadable server-generated PDF/ZIP is required beyond browser Print → PDF.
 - [ ] Verify coordinator-only attachment selection is reflected in aggregate report output.
