@@ -147,6 +147,7 @@ def page(request, user, title, body):
     if user["role"] != "admin":
         menu.append(("تغيير كلمة المرور", "/platform/password"))
     if user["role"] in ("admin","coordinator"):
+        menu.append(("مراجعة تصحيحات الحضور", "/platform/attendance/corrections"))
         menu.append(("استيراد Excel", "/platform/import"))
         menu.append(("كشوف النقط PDF", "/platform/exports/grades"))
     if user["role"] == "admin":
@@ -536,6 +537,7 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
     enrollments=db.scalars(select(Enrollment).where(Enrollment.year_id==slot.year_id,
        Enrollment.center_id==slot.center_id,Enrollment.track_id==slot.track_id,Enrollment.status=="active")).all()
     marks={a.enrollment_id:a for a in db.scalars(select(Attendance).where(Attendance.session_id==s.id)).all()}
+    report=db.scalar(select(SessionReport).where(SessionReport.session_id==s.id))
     rows=[]
     for en in enrollments:
         l=db.get(Learner,en.learner_id)
@@ -546,13 +548,20 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
         old=marks.get(en.id)
         action="—"
         if user["id"]==slot.staff_id and s.status!="canceled" and not discipline:
-            action=form(f"/platform/sessions/{s.id}/attendance",request.session["csrf"],
-                f'<input type="hidden" name="enrollment_id" value="{en.id}">'+
-                choose("status","الحضور",[("present","حاضر"),("absent","غائب"),("late","متأخر")],old.status if old else None),
-                "تسجيل")
+            if report and report.status=="approved":
+                if old:
+                    action=form(f"/platform/attendance/{old.id}/correction",request.session["csrf"],
+                        choose("new_status","الحالة الجديدة",
+                            [("present","حاضر"),("absent","غائب"),("late","متأخر")],
+                            selected=old.status)+area("reason","سبب التصحيح المعلل"),"طلب تصحيح")
+            else:
+                action=form(f"/platform/sessions/{s.id}/attendance",request.session["csrf"],
+                    f'<input type="hidden" name="enrollment_id" value="{en.id}">'+
+                    choose("status","الحضور",[("present","حاضر"),("absent","غائب"),("late","متأخر")],
+                           old.status if old else None),
+                    "تسجيل")
         rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',state,
            e(old.status if old else "لم يسجل"),action])
-    report=db.scalar(select(SessionReport).where(SessionReport.session_id==s.id))
     body=f'<section><h2>{e(slot.subject)} · {e(s.held_on)}</h2><p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>{table(["المستفيد","التنبيه","الحضور","الإجراء"],rows)}</section>'
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
         body+='<section><h2>تقرير الحصة الواحدة</h2>'+form(f"/platform/sessions/{s.id}/report",request.session["csrf"],
@@ -597,6 +606,10 @@ def mark_attendance(session_id:int,request:Request,token:str=Form(alias="_csrf")
         raise HTTPException(403,"المستفيد غير مسجل في هذه الحصة")
     if status not in ("present","absent","late") or s.status=="canceled" or disciplinary_status(db,en,s.held_on):
         raise HTTPException(422,"لا يجوز تسجيل الحضور أو الغياب لحصة ملغاة أو أثناء الإقصاء التأديبي")
+    approved_report=db.scalar(select(SessionReport).where(
+        SessionReport.session_id==s.id,SessionReport.status=="approved"))
+    if approved_report:
+        raise HTTPException(409,"الحضور مقفل بعد اعتماد تقرير الحصة؛ يتطلب تصحيحًا معللًا")
     pending_absences=db.scalar(select(func.count()).select_from(Attendance).where(
         Attendance.enrollment_id==en.id,Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
     if status in ("present","late") and pending_absences:
