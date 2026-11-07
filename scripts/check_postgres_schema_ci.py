@@ -75,3 +75,48 @@ with psycopg2.connect(dsn) as connection:
         assert cursor.fetchone()[0] == 0
         cursor.execute("RESET ROLE")
 print(f"PostgreSQL: {len(tables)} private RLS-enabled v2 tables; {fk_count} foreign keys verified")
+
+
+# Run the FastAPI application on the actual disposable PostgreSQL schema.
+# The RLS client role is assumed for every new SQLAlchemy connection, so this
+# also checks server-side access under a NOLOGIN, non-bypassrls database role.
+import hashlib
+from sqlalchemy import event
+from fastapi.testclient import TestClient
+
+os.environ["DATABASE_URL"] = dsn
+os.environ["APP_SECRET"] = "ephemeral-github-ci-only-secret-no-production-use"
+salt = b"local-test-salt"
+digest = hashlib.pbkdf2_hmac("sha256", b"ci-password-strong", salt, 390000)
+os.environ["ADMIN_PASSWORD_HASH"] = (
+    "pbkdf2_sha256$390000$" + salt.hex() + "$" + digest.hex()
+)
+os.environ["ADMIN_USERNAME"] = "ci-admin"
+os.environ.pop("VERCEL", None)
+
+import app as site
+
+site.Report.__table__.create(bind=site.engine, checkfirst=True)
+site.Absence.__table__.create(bind=site.engine, checkfirst=True)
+
+@event.listens_for(site.engine, "connect")
+def set_test_role(connection, connection_record):
+    cursor=connection.cursor()
+    try:
+        cursor.execute("SET ROLE noor_reports_web")
+        cursor.execute("SELECT current_user")
+        assert cursor.fetchone()[0] == "noor_reports_web"
+    finally:
+        cursor.close()
+
+with TestClient(site.app, follow_redirects=False) as client:
+    health=client.get("/health")
+    assert health.status_code==200,health.text
+    assert health.json()["status"]=="ready"
+    login=client.post("/login",data={"username":"ci-admin","password":"ci-password-strong"})
+    assert login.status_code==303,login.text
+    dashboard=client.get("/platform")
+    assert dashboard.status_code==200,dashboard.text[:300]
+    assert "دار الشباب لعيايدة 2" in dashboard.text
+    assert "مركز حمزة عبد المطلب" in dashboard.text
+print("PostgreSQL FastAPI smoke test: ready, authenticated, restricted-role access")
