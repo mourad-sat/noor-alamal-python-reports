@@ -439,8 +439,9 @@ def overlaps(first:Slot, second:Slot) -> bool:
     return first.starts_at < second.ends_at and second.starts_at < first.ends_at
 
 def slot_conflict(db:Session,slot:Slot):
-    query=select(Slot).where(Slot.staff_id==slot.staff_id,Slot.year_id==slot.year_id,
-                            Slot.weekday==slot.weekday,Slot.canceled.is_(False))
+    query=select(Slot).where(Slot.year_id==slot.year_id,Slot.weekday==slot.weekday,
+                            Slot.canceled.is_(False),
+                            or_(Slot.staff_id==slot.staff_id,Slot.track_id==slot.track_id))
     for other in db.scalars(query).all():
         if other.id!=slot.id and overlaps(other,slot):return other
     return None
@@ -491,7 +492,9 @@ def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(
               subject=subject,kind="professional" if subject=="مهني" else "pedagogical",
               weekday=weekday,starts_at=starts_at,ends_at=ends_at,specific_date=specific_date,change_reason=reason.strip()[:1000])
     other=slot_conflict(db,slot)
-    if other:raise HTTPException(409,f"تعارض: المؤطر مرتبط بالحصة رقم {other.id} في الوقت نفسه.")
+    if other:
+        conflict = "المؤطر" if other.staff_id==slot.staff_id else "المسلك"
+        raise HTTPException(409,f"تعارض في التوقيت: {conflict} مرتبط بحصة رقم {other.id} في الوقت نفسه.")
     db.add(slot);db.flush();log(db,user,"schedule","slot",slot.id,reason)
     db.add(Notification(staff_id=staff_id,message=f"حصة جديدة: {subject}، يوم {weekday} الساعة {starts_at}",target="/platform/schedule"))
     db.commit();return redirect("/platform/schedule")
