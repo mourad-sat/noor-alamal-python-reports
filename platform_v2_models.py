@@ -318,3 +318,12 @@ class ErasureAggregate(Base):
     erased_learners: Mapped[int] = mapped_column(Integer,default=0)
     absent_sessions: Mapped[int] = mapped_column(Integer,default=0)
     absent_days: Mapped[int] = mapped_column(Integer,default=0)
+
+class SessionReportProof(Base):
+    """Public QR proof token, without publicly readable learner information."""
+    __tablename__ = "v2_session_report_proofs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64),unique=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_session_reports")))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    issued_at: Mapped[datetime] = mapped_column(DateTime,default=now)
