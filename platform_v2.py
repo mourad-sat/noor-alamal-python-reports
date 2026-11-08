@@ -162,30 +162,54 @@ def page(request, user, title, body):
         menu.append(("حماية البيانات والحذف", "/platform/privacy/erase"))
         menu.append(("السجل الإداري", "/platform/audit"))
         menu.append(("التقارير القديمة", "/reports"))
-    nav = "".join(f'<a href="{url}">{e(label)}</a>' for label, url in menu)
-    return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(title)} | جمعية نور الأمل</title><link rel="stylesheet" href="/static/style.css">
-<style>
-.pv2 {{min-height:100vh;background:#f6f9fc;color:#14283e;font-family:Tahoma,Arial,sans-serif}}
-.pv2 nav {{background:#125083;color:white;padding:16px;display:flex;flex-wrap:wrap;gap:12px}}
-.pv2 nav a {{color:white;text-decoration:none;padding:5px 9px;border-radius:8px}}
-.pv2 nav a:hover {{background:#ffffff24}}
-.pv2 main {{max-width:1150px;margin:24px auto;padding:0 16px 50px}}
-.pv2 section {{background:white;border:1px solid #dce8f0;border-radius:12px;margin:18px 0;padding:18px;box-shadow:0 3px 12px #0a244407}}
-.pv2 .form-grid {{display:flex;align-items:end;flex-wrap:wrap;gap:12px}}
-.pv2 label {{display:grid;gap:5px;font-size:14px;min-width:160px;flex:1}}
-.pv2 input,.pv2 textarea,.pv2 select {{width:100%;border:1px solid #b7ccdc;padding:10px;border-radius:7px;background:white;color:#14283e}}
-.pv2 button,.pv2 .button {{background:#12609a;color:white;border:0;border-radius:7px;padding:11px 15px;text-decoration:none;cursor:pointer}}
-.pv2 table {{width:100%;border-collapse:collapse;background:white}} .pv2 th,.pv2 td {{padding:10px;text-align:right;border-bottom:1px solid #e1e9ef}}
-.pv2 .table-scroll {{overflow:auto}} .pv2 .subtle {{color:#526578;font-size:13px}}
-.pv2 .danger {{color:#ad2735}} .pv2 .good {{color:#16813d}}
-.pv2 h1 {{font-size:25px}} .pv2 h2 {{font-size:19px}}
-@media print {{.pv2 nav,.pv2 button,.pv2 form,.pv2 .no-print {{display:none!important}} .pv2 main {{margin:0;max-width:none}}}}
-</style></head><body class="pv2">
-<nav><strong style="display:flex;gap:8px;align-items:center"><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل" width="45" height="40" style="border-radius:5px;background:white;padding:2px">جمعية نور الأمل · الفرصة الثانية</strong>{nav}<span>{e(user["name"])} ({e(ROLE_LABELS[user["role"]])})</span>
-<form method="post" action="/logout">{post_fields(request.session.get("csrf",""))}<button>خروج</button></form></nav>
-<main><h1>{e(title)}</h1>{body}</main></body></html>''')
+    current_path = request.url.path.rstrip("/") or "/"
+    nav_items = []
+    for label, url in menu:
+        # Keep parent navigation highlighted for detail/edit pages.
+        active = current_path == url or (
+            url != "/platform" and current_path.startswith(url + "/")
+        )
+        current = ' aria-current="page"' if active else ""
+        nav_items.append(f'<a href="{url}"{current}>{e(label)}</a>')
+    nav = "".join(nav_items)
+    username = e(user["name"])
+    role_label = e(ROLE_LABELS[user["role"]])
+    csrf = post_fields(request.session.get("csrf", ""))
+    return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#145b83">
+<title>{e(title)} | جمعية نور الأمل</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/platform_ui.css">
+</head><body class="pv2">
+<a class="pv2-skip" href="#main-content">تجاوز القائمة والوصول إلى المحتوى</a>
+<div class="pv2-layout">
+<aside class="pv2-sidebar" aria-label="القائمة الرئيسية">
+<a class="pv2-brand" href="/platform">
+<img src="/static/noor_official_logo.webp" alt="" width="51" height="51">
+<span><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></span>
+</a>
+<p class="pv2-nav-title">الأقسام والخدمات</p>
+<nav class="pv2-links" aria-label="التنقل الرئيسي">{nav}</nav>
+</aside>
+<div class="pv2-content-wrap">
+<header class="pv2-topbar">
+<div><p class="pv2-heading-sub">منصة التسيير الإداري</p><strong>{e(title)}</strong></div>
+<div class="pv2-account">
+<span class="pv2-user">{username} · {role_label}</span>
+<form class="pv2-logout" method="post" action="/logout">{csrf}<button type="submit">تسجيل الخروج</button></form>
+</div>
+</header>
+<details class="pv2-mobile-menu">
+<summary>فتح قائمة أقسام المنصة</summary>
+<nav class="pv2-links" aria-label="التنقل على الهاتف">{nav}</nav>
+</details>
+<main class="pv2-main" id="main-content" tabindex="-1">
+<h1 class="pv2-page-title">{e(title)}</h1>{body}
+</main>
+<footer class="pv2-footnote">جمعية نور الأمل · نظام التسيير الإداري</footer>
+</div></div></body></html>''')
+
 
 def center_options(db, user):
     rows = db.scalars(select(Center).order_by(Center.id)).all()
