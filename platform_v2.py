@@ -728,7 +728,7 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
         if l.born_on and (date.today()-l.born_on).days < 18*365 and not l.guardian_phone:
             body += '<section><p class="danger">هاتف ولي الأمر لم يُسجل بعد؛ يرجى استكماله لاحقًا من زر التعديل.</p></section>'
     if user["role"] in ("admin","coordinator"):
-        body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
+        body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>الرمز الأصلي: {e(l.source_code) if l.source_code else "غير متوفر"} · ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
     arows=[[e(s.held_on),e(a.status),e("مغطى بإذن" if a.permit_id else "معلّق" if a.status=="absent" else "—")] for a,s in atts]
     body+=f'<section><h2>سجل الحضور والغياب</h2>{table(["التاريخ","الحالة","إذن الدخول"],arows)}</section>'
     if user["role"]=="coordinator" and pending:
@@ -748,6 +748,7 @@ def learner_edit_page(enrollment_id:int, request:Request,
     l = db.get(Learner,en.learner_id)
     fields = (
         field("full_name","الاسم الكامل",value=l.full_name) +
+        field("source_code","الرمز الأصلي (إن وجد)",required=False,value=l.source_code) +
         choose("gender","الجنس",[("","غير محدد"),("ذكر","ذكر"),("أنثى","أنثى")],selected=l.gender) +
         field("born_on","تاريخ الازدياد","date",False,l.born_on.isoformat() if l.born_on else "") +
         field("birthplace","مكان الازدياد",required=False,value=l.birthplace) +
@@ -766,7 +767,7 @@ def learner_edit_page(enrollment_id:int, request:Request,
 
 @app.post("/platform/learners/{enrollment_id:int}/edit")
 def learner_edit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf"),
-                 full_name:str=Form(),gender:str=Form(""),born_on:date|None=Form(None),
+                 full_name:str=Form(),source_code:str=Form(""),gender:str=Form(""),born_on:date|None=Form(None),
                  birthplace:str=Form(""),phone:str=Form(""),address:str=Form(""),
                  guardian_name:str=Form(""),guardian_relationship:str=Form(""),
                  guardian_phone:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
@@ -775,7 +776,9 @@ def learner_edit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf")
     en=learner_scope(db,user,enrollment_id)
     l=db.get(Learner,en.learner_id)
     full_name=full_name.strip()
+    source_code=source_code.strip()
     if (len(full_name)<3 or len(full_name)>180 or full_name[:1] in ("=","+","-","@")
+        or len(source_code)>60 or source_code[:1] in ("=","+","-","@")
         or gender not in ("","ذكر","أنثى","M","F","m","f")
         or (born_on and born_on>date.today()) or len(birthplace.strip())>120
         or len(phone.strip())>45 or len(address.strip())>240
@@ -785,7 +788,10 @@ def learner_edit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf")
     existing=db.scalar(select(Learner.id).where(Learner.id!=l.id,
        Learner.full_name==full_name,Learner.born_on==born_on).limit(1))
     if existing is not None:raise HTTPException(409,"يوجد ملف آخر بنفس الاسم وتاريخ الازدياد")
+    if source_code and db.scalar(select(Learner.id).where(Learner.id!=l.id,Learner.source_code==source_code).limit(1)) is not None:
+        raise HTTPException(409,"الرمز الأصلي مستعمل في ملف مستفيد آخر")
     l.full_name=full_name
+    l.source_code=source_code
     l.gender=gender
     l.born_on=born_on
     l.birthplace=birthplace.strip()
