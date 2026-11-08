@@ -52,7 +52,8 @@ def test_card_print_contains_full_learner_identity_and_registration_data(client)
     admin = setup_org(client)
     en_id = register(client, admin, track_id=1, name="مستفيدة نموذجية", source="Z-123")
     page = client.get(f"/platform/learners/{en_id}")
-    assert 'طباعة بطاقة المستفيد' in page.text
+    assert 'طباعة بطاقة A4 المفصلة' in page.text
+    assert 'طباعة البطاقة الصغيرة' in page.text
     printable = client.get(f"/platform/learners/{en_id}/card")
     assert printable.status_code == 200
     for piece in (
