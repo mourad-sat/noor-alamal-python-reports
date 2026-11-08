@@ -5,6 +5,7 @@ link in the UI is never considered authorization.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import html
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app import app, check_csrf, get_db, verify_password
 from platform_v2_models import (
-    Center, Year, Track, Staff, Assignment, Learner, Enrollment, Slot, Closure,
+    Center, Year, Track, Staff, StaffProfile, Assignment, Learner, Enrollment, Slot, Closure,
     SessionDay, Attendance, Permit, SessionReport, Assessment, Grade,
     Incident, Discipline, Notice, Notification, Audit, now,
 )
@@ -148,6 +149,7 @@ def page(request, user, title, body):
         ("التنبيهات", "/platform/notifications"),
     ]
     if user["role"] != "admin":
+        menu.append(("معلومات بطاقتي", "/platform/profile"))
         menu.append(("تغيير كلمة المرور", "/platform/password"))
     if user["role"] in ("admin","coordinator"):
         menu.append(("مراجعة تصحيحات الحضور", "/platform/attendance/corrections"))
@@ -484,6 +486,9 @@ def delete_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf
         raise HTTPException(409, "لا يمكن الحذف بسبب وجود سجلات عمل؛ يمكنك تعطيل الحساب")
     for a in staff_assignments(db, s.id):
         db.delete(a)
+    profile = db.get(StaffProfile, s.id)
+    if profile:
+        db.delete(profile)
     db.flush()
     db.delete(s)
     log(db, user, "delete", "staff", staff_id, reason.strip())
@@ -495,24 +500,41 @@ def delete_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf
     return redirect("/platform/staff")
 
 
-def staff_cards_html(staff: list[Staff], db: Session) -> HTMLResponse:
+def staff_cards_html(staff: list[Staff], db: Session, back_to: str = "/platform/staff") -> HTMLResponse:
     cards = []
     for s in staff:
         if not s.enabled:
             continue
+        profile = db.get(StaffProfile, s.id)
         centers = e(assigned_centers(db, s.id))
+        specialty = e(profile.specialty) if profile and profile.specialty else ""
+        work_phone = e(profile.work_phone) if profile and profile.work_phone else ""
+        work_email = e(profile.work_email) if profile and profile.work_email else ""
+        portrait = (
+            f'<img class="portrait" alt="صورة الموظف" src="data:image/jpeg;base64,{base64.b64encode(profile.photo_data).decode("ascii")}">'
+            if profile and profile.photo_data and profile.photo_mime == "image/jpeg"
+            else '<div class="portrait-placeholder" aria-hidden="true">الصورة<br>اختيارية</div>')
+        extra = (
+            (f'<p>التخصص: {specialty}</p>' if specialty else '') +
+            (f'<p>الهاتف المهني: <bdi>{work_phone}</bdi></p>' if work_phone else '') +
+            (f'<p>البريد المهني: <bdi>{work_email}</bdi></p>' if work_email else '')
+        )
         cards.append(
             '<article class="employee-card">'
             '<header><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل">'
             '<div><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></div></header>'
             '<div class="employee-content"><span class="tag">بطاقة مهنية داخلية</span>'
+            f'<div class="employee-details">{portrait}<div class="employee-information">'
             f'<h2>{e(s.full_name)}</h2>'
             f'<p>{e(ROLE_LABELS.get(s.role, s.role))}</p>'
-            f'<p>المركز: {centers}</p></div>'
+            f'<p>المركز: {centers}</p>{extra}'
+            '</div></div></div>'
             f'<footer><span>رقم الموظف: {s.id:05d}</span>'
             f'<span>تاريخ الإصدار: {date.today().strftime("%Y/%m/%d")}</span></footer>'
             '</article>')
     cards_html = "".join(cards) if cards else '<p>لا توجد حسابات نشطة لطباعة بطاقاتها.</p>'
+    if back_to not in ("/platform/staff", "/platform/profile"):
+        back_to = "/platform/staff"
     return HTMLResponse("""<!doctype html><html lang="ar" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>بطاقات الموظفين | جمعية نور الأمل</title>
@@ -524,16 +546,20 @@ button,a.button{font:inherit;border:0;border-radius:8px;padding:10px 16px;backgr
 .cards{display:flex;gap:10mm;flex-wrap:wrap}
 .employee-card{width:85.6mm;height:54mm;flex:0 0 85.6mm;background:white;border:1px solid #acc6d3;
 border-radius:4mm;overflow:hidden;display:flex;flex-direction:column;break-inside:avoid;page-break-inside:avoid}
-.employee-card header{display:flex;align-items:center;gap:3mm;background:#125083;color:white;padding:3mm 4mm;height:16mm}
+.employee-card header{display:flex;align-items:center;gap:3mm;background:#125083;color:white;padding:3mm 4mm;height:15mm;flex:0 0 15mm}
 .employee-card header img{width:13mm;height:12mm;object-fit:contain;background:white;border-radius:2mm}
 .employee-card header strong{display:block;font-size:12px}
 .employee-card header small{display:block;font-size:8px}
-.employee-content{padding:2mm 4mm;flex:1;overflow:hidden}
-.employee-content h2{font-size:15px;margin:1.5mm 0 .5mm;line-height:1.2}
-.employee-content p{margin:0;font-size:10px;line-height:1.4}
+.employee-content{padding:1.5mm 3mm;flex:1;overflow:hidden}
+.employee-details{display:flex;gap:2mm;margin-top:.7mm;align-items:flex-start;min-width:0}
+.portrait,.portrait-placeholder{width:18mm;height:25mm;flex:0 0 18mm;border-radius:1.5mm;border:1px solid #c3d3dd;object-fit:cover}
+.portrait-placeholder{display:flex;align-items:center;justify-content:center;background:#f1f5f8;color:#82939f;font-size:8px;text-align:center}
+.employee-information{min-width:0;flex:1;overflow:hidden}
+.employee-information h2{font-size:12px;margin:0 0 .4mm;line-height:1.2}
+.employee-information p{margin:0;font-size:8px;line-height:1.3;overflow-wrap:anywhere}
 .tag{font-size:8px;color:#11764c;font-weight:bold}
 .employee-card footer{background:#e6f5ed;border-top:1px solid #b2d8bf;display:flex;justify-content:space-between;
-padding:1.6mm 3mm;font-size:8px}
+padding:1.6mm 3mm;font-size:8px;flex:0 0 auto}
 @media print{
 @page{size:A4 portrait;margin:12mm}
 body{margin:0;padding:0;background:white}
@@ -543,8 +569,8 @@ body{margin:0;padding:0;background:white}
 }
 </style></head><body>
 <div class="toolbar"><button onclick="window.print()">طباعة البطاقات أو حفظ PDF</button>
-<a class="button" href="/platform/staff">العودة إلى الموظفين</a>
-<small>بطاقات داخلية، وليست بديلاً عن بطاقة الهوية المدنية. لا تعرض كلمات المرور.</small></div>
+<a class="button" href=""" + f'"{back_to}">العودة</a>' + """
+<small>تظهر المعلومات المهنية التي أدخلها صاحب البطاقة، ولا تظهر كلمات المرور.</small></div>
 <div class="cards">""" + cards_html + "</div></body></html>")
 
 
