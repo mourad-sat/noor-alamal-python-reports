@@ -270,42 +270,331 @@ def track_create(request:Request,token:str=Form(alias="_csrf"),year_id:int=Form(
     except IntegrityError:db.rollback();raise HTTPException(409,"المسلك موجود في هذا المركز والسنة")
     return redirect("/platform/years")
 
-@app.get("/platform/staff",response_class=HTMLResponse)
-def staff_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
-    require_role(user,"admin");ensure_data(db);csrf=request.session["csrf"]
-    staff=db.scalars(select(Staff).order_by(Staff.id)).all()
-    add=form("/platform/staff",csrf,field("username","اسم المستخدم")+field("full_name","الاسم الكامل")+choose("role","الدور",[(k,v) for k,v in ROLE_LABELS.items() if k!="admin"])+field("password","كلمة مرور أولية (12 حرفًا على الأقل)","password"),"إنشاء حساب")
-    assign=form("/platform/assign",csrf,choose("staff_id","الموظف",[(s.id,s.full_name) for s in staff])+choose("center_id","المركز",center_options(db,user))+choose("track_id","المسلك (0 للمنسق)",[(0,"كل المركز / منسق")]+tracks_options(db,user))+choose("subject","المادة",[("","التكوين المهني / إدارة المركز")]+[(s,s) for s in SUBJECTS]),"إسناد العمل")
-    rows=[[e(s.full_name),e(s.username),e(ROLE_LABELS.get(s.role,s.role)),e("نشط" if s.enabled else "معطل"),
-        form(f"/platform/staff/{s.id}/toggle",csrf, "", "تعطيل" if s.enabled else "تفعيل")+
-        form(f"/platform/staff/{s.id}/password",csrf,field("password","كلمة مرور جديدة","password"),"إعادة التعيين")] for s in staff]
-    return page(request,user,"حسابات الموظفين",f"<section><h2>إنشاء حساب بإذن الإدارة فقط</h2>{add}</section><section><h2>الربط بالمركز والمسلك والمادة</h2>{assign}</section><section>{table(['الاسم','المستخدم','الدور','الحالة','الإدارة'],rows)}</section>")
+# Staff management is reserved for the association's primary administrator.
+# Keep staff identity on historical records: deletion is only possible for staff
+# with no authored/reviewed documents, grades, incidents, or audit history.
+def staff_has_history(db: Session, staff: Staff) -> bool:
+    from platform_v2_models import AttendanceCorrection, CenterReport, GradeCorrection
+    references = (
+        (Assessment, Assessment.staff_id),
+        (Slot, Slot.staff_id),
+        (SessionReport, SessionReport.author_id),
+        (CenterReport, CenterReport.author_id),
+        (Incident, Incident.staff_id),
+        (Notification, Notification.staff_id),
+        (AttendanceCorrection, AttendanceCorrection.requested_by),
+        (Audit, Audit.actor),
+        (Grade, Grade.approved_by),
+        (SessionReport, SessionReport.reviewed_by),
+        (CenterReport, CenterReport.reviewed_by),
+        (Discipline, Discipline.approved_by),
+        (GradeCorrection, GradeCorrection.reviewed_by),
+        (AttendanceCorrection, AttendanceCorrection.reviewed_by),
+    )
+    for model, column in references:
+        value = staff.full_name if column.key in ("actor", "approved_by", "reviewed_by") else staff.id
+        if db.scalar(select(model.id).where(column == value).limit(1)) is not None:
+            return True
+    return False
+
+
+def staff_assignments(db: Session, staff_id: int):
+    return db.scalars(select(Assignment).where(Assignment.staff_id == staff_id).order_by(Assignment.id)).all()
+
+
+def assigned_centers(db: Session, staff_id: int) -> str:
+    assignments = staff_assignments(db, staff_id)
+    names = list(dict.fromkeys(db.get(Center, a.center_id).name for a in assignments if db.get(Center, a.center_id)))
+    return "، ".join(names) if names else "لم يُحدد بعد"
+
+
+@app.get("/platform/staff", response_class=HTMLResponse)
+def staff_page(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    ensure_data(db)
+    csrf = request.session["csrf"]
+    staff = db.scalars(select(Staff).order_by(Staff.id)).all()
+    add = form("/platform/staff", csrf,
+        field("username", "اسم المستخدم") + field("full_name", "الاسم الكامل") +
+        choose("role", "الدور", [(k, v) for k, v in ROLE_LABELS.items() if k != "admin"]) +
+        field("password", "كلمة مرور أولية (12 حرفًا على الأقل)", "password"), "إنشاء حساب")
+    assign = form("/platform/assign", csrf,
+        choose("staff_id", "الموظف", [(s.id, s.full_name) for s in staff]) +
+        choose("center_id", "المركز", center_options(db, user)) +
+        choose("track_id", "المسلك (0 للمنسق)", [(0, "كل المركز / منسق")] + tracks_options(db, user)) +
+        choose("subject", "المادة", [("", "التكوين المهني / إدارة المركز")] + [(s, s) for s in SUBJECTS]),
+        "إسناد العمل")
+    rows = []
+    for s in staff:
+        actions = (
+            f'<div class="form-grid">'
+            f'<a class="button" href="/platform/staff/{s.id}/edit">تعديل</a>'
+            f'<a class="button" href="/platform/staff/{s.id}/card">طباعة بطاقة</a>'
+            f'<a class="button" href="/platform/staff/{s.id}/delete" style="background:#a82d3a">حذف</a>'
+            + form(f"/platform/staff/{s.id}/toggle", csrf, "",
+                   "تعطيل الحساب" if s.enabled else "تفعيل الحساب")
+            + '</div>')
+        rows.append([e(s.full_name), e(s.username), e(ROLE_LABELS.get(s.role, s.role)),
+                     e(assigned_centers(db, s.id)), e("نشط" if s.enabled else "معطل"), actions])
+    intro = (
+        '<section><h2>إدارة حسابات الموظفين والمنسقين</h2>'
+        '<p class="subtle">يمكنك تعديل المعلومات والمركز، وطباعة بطاقة مهنية، أو حذف الحساب غير المستعمل. '
+        'الحساب الذي له سجلات عمل محفوظة يمكن تعطيله فقط لحماية تاريخ الجمعية.</p>'
+        '<p><a class="button" href="/platform/staff/cards">طباعة جميع بطاقات الموظفين النشطين</a></p></section>')
+    return page(request, user, "حسابات الموظفين", intro +
+        f"<section><h2>إنشاء حساب بإذن الإدارة فقط</h2>{add}</section>"
+        f"<section><h2>الربط بالمركز والمسلك والمادة</h2>{assign}</section>"
+        f"<section>{table(['الاسم', 'المستخدم', 'الدور', 'المركز', 'الحالة', 'الإجراءات'], rows)}</section>")
+
 
 @app.post("/platform/staff")
-def create_staff(request:Request,token:str=Form(alias="_csrf"),username:str=Form(),full_name:str=Form(),role:str=Form(),password:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
-    require_role(user,"admin");assert_csrf(request,token)
-    if role not in ("coordinator","instructor","educator") or not username.strip() or not full_name.strip():raise HTTPException(422,"بيانات الحساب غير صحيحة")
-    s=Staff(username=username.strip()[:80],full_name=full_name.strip()[:140],role=role,password_hash=hash_password(password))
+def create_staff(request: Request, token: str = Form(alias="_csrf"), username: str = Form(),
+                 full_name: str = Form(), role: str = Form(), password: str = Form(),
+                 db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    assert_csrf(request, token)
+    from app import ADMIN_USERNAME
+    username, full_name = username.strip(), full_name.strip()
+    if role not in ("coordinator", "instructor", "educator") or not (1 <= len(username) <= 80) or not (1 <= len(full_name) <= 140) or username == ADMIN_USERNAME:
+        raise HTTPException(422, "بيانات الحساب غير صحيحة")
+    s = Staff(username=username, full_name=full_name, role=role, password_hash=hash_password(password))
     db.add(s)
-    try:db.flush();log(db,user,"create","staff",s.id);db.commit()
-    except IntegrityError:db.rollback();raise HTTPException(409,"اسم المستخدم موجود")
+    try:
+        db.flush()
+        log(db, user, "create", "staff", s.id)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "اسم المستخدم موجود")
     return redirect("/platform/staff")
+
+
+@app.get("/platform/staff/{staff_id:int}/edit", response_class=HTMLResponse)
+def edit_staff_page(staff_id: int, request: Request, db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404, "الموظف غير موجود")
+    assigned = staff_assignments(db, s.id)
+    center_id = assigned[0].center_id if s.role == "coordinator" and assigned else 0
+    fields = (
+        field("username", "اسم المستخدم", value=s.username) +
+        field("full_name", "الاسم الكامل", value=s.full_name) +
+        choose("role", "الدور", [(k, v) for k, v in ROLE_LABELS.items() if k != "admin"], selected=s.role) +
+        choose("center_id", "مركز المنسق", [(0, "بدون مركز")] + center_options(db, user), selected=center_id))
+    form_html = form(f"/platform/staff/{s.id}/edit", request.session["csrf"], fields, "حفظ التعديلات")
+    note = ('<p class="subtle">يمكن تغيير مركز المنسق هنا. تغيير الدور يحتاج أولاً إلغاء الإسناد القديم، '
+            'ولا يسمح به إذا كانت للموظف أعمال موثقة. المكوّن والمنشط تُدار مسالكهما من قسم إسناد العمل.</p>')
+    password_form = form(f"/platform/staff/{s.id}/password", request.session["csrf"],
+        field("password", "كلمة مرور جديدة (12 حرفًا على الأقل)", "password"), "إعادة تعيين كلمة المرور")
+    body = (f'<section><h2>تعديل بيانات: {e(s.full_name)}</h2>{note}{form_html}</section>'
+            f'<section><h2>كلمة المرور</h2>{password_form}</section>'
+            '<p><a class="button" href="/platform/staff">العودة إلى الموظفين</a></p>')
+    return page(request, user, "تعديل الموظف", body)
+
+
+@app.post("/platform/staff/{staff_id:int}/edit")
+def edit_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf"),
+               username: str = Form(), full_name: str = Form(), role: str = Form(),
+               center_id: int = Form(0), db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    assert_csrf(request, token)
+    from app import ADMIN_USERNAME
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404, "الموظف غير موجود")
+    username, full_name = username.strip(), full_name.strip()
+    if (role not in ("coordinator", "instructor", "educator") or
+        not (1 <= len(username) <= 80) or not (1 <= len(full_name) <= 140) or
+        username == ADMIN_USERNAME or center_id < 0):
+        raise HTTPException(422, "بيانات الموظف غير صحيحة")
+    assigned = staff_assignments(db, s.id)
+    if role != s.role and (assigned or staff_has_history(db, s)):
+        raise HTTPException(409, "لا يمكن تغيير الدور مع وجود إسناد أو سجل عمل؛ ألغ الإسناد أولاً إن لم تكن هناك أعمال موثقة")
+    if role == "coordinator":
+        if center_id and not db.get(Center, center_id):
+            raise HTTPException(422, "المركز غير موجود")
+        if any(a.track_id is not None or a.subject for a in assigned):
+            raise HTTPException(409, "يجب إزالة إسناد المسالك قبل التحويل لمنسق")
+        other = db.scalar(select(Assignment).join(Staff, Assignment.staff_id == Staff.id).where(
+            Assignment.center_id == center_id, Staff.role == "coordinator", Staff.id != s.id).limit(1)) if center_id else None
+        if other:
+            raise HTTPException(409, "هذا المركز له منسق آخر بالفعل")
+        old_center_id = assigned[0].center_id if assigned else 0
+        if center_id != old_center_id:
+            if staff_has_history(db, s):
+                raise HTTPException(409, "لهذا المنسق أعمال موثقة؛ احتفظ بحسابه التاريخي وأنشئ حسابًا جديدًا للمركز الآخر")
+            for a in assigned:
+                db.delete(a)
+            db.flush()
+            if center_id:
+                db.add(Assignment(staff_id=s.id, center_id=center_id, track_id=None, subject=""))
+    elif role != s.role and assigned:
+        raise HTTPException(409, "يجب إزالة الإسناد القديم قبل تغيير الدور")
+    sensitive_changed = s.username != username or s.role != role or (
+        role == "coordinator" and (assigned[0].center_id if assigned else 0) != center_id)
+    s.username = username
+    s.full_name = full_name
+    s.role = role
+    if sensitive_changed:
+        s.session_version += 1
+    log(db, user, "edit", "staff", s.id, "تحديث بيانات الموظف أو مركز إسناده")
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "اسم المستخدم موجود أو هناك تعارض في الإسناد")
+    return redirect("/platform/staff")
+
+
+@app.get("/platform/staff/{staff_id:int}/delete", response_class=HTMLResponse)
+def staff_delete_page(staff_id: int, request: Request, db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404, "الموظف غير موجود")
+    history = staff_has_history(db, s)
+    if history:
+        body = (f'<section><h2>لا يمكن حذف {e(s.full_name)}</h2>'
+                '<p>للموظف أو المنسق بيانات عمل مؤرشفة. حفاظًا على التقارير والنقط والمصادقات، '
+                'استعمل زر «تعطيل الحساب» من صفحة الموظفين بدلاً من الحذف.</p></section>')
+    else:
+        fields = (field("confirm_username", f"للتأكيد، اكتب اسم المستخدم: {s.username}") +
+                  field("reason", "سبب الحذف (إلزامي)"))
+        body = (f'<section><h2 class="danger">حذف حساب: {e(s.full_name)}</h2>'
+                '<p>سيُحذف هذا الحساب نهائيًا مع إسناداته فقط، ولن يُحذف أي تقرير أو ملف مستفيد.</p>' +
+                form(f"/platform/staff/{s.id}/delete", request.session["csrf"], fields, "تأكيد حذف الحساب") +
+                '</section>')
+    return page(request, user, "حذف حساب موظف",
+                body + '<p><a class="button" href="/platform/staff">إلغاء والعودة إلى الموظفين</a></p>')
+
+
+@app.post("/platform/staff/{staff_id:int}/delete")
+def delete_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf"),
+                 confirm_username: str = Form(), reason: str = Form(),
+                 db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    assert_csrf(request, token)
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404, "الموظف غير موجود")
+    if confirm_username.strip() != s.username or not reason.strip() or len(reason.strip()) > 500:
+        raise HTTPException(422, "اسم المستخدم غير مطابق أو سبب الحذف غير صالح")
+    if staff_has_history(db, s):
+        raise HTTPException(409, "لا يمكن الحذف بسبب وجود سجلات عمل؛ يمكنك تعطيل الحساب")
+    for a in staff_assignments(db, s.id):
+        db.delete(a)
+    db.flush()
+    db.delete(s)
+    log(db, user, "delete", "staff", staff_id, reason.strip())
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "لا يمكن الحذف بسبب وجود بيانات مرتبطة بهذا الحساب")
+    return redirect("/platform/staff")
+
+
+def staff_cards_html(staff: list[Staff], db: Session) -> HTMLResponse:
+    cards = []
+    for s in staff:
+        if not s.enabled:
+            continue
+        centers = e(assigned_centers(db, s.id))
+        cards.append(
+            '<article class="employee-card">'
+            '<header><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل">'
+            '<div><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></div></header>'
+            '<div class="employee-content"><span class="tag">بطاقة مهنية داخلية</span>'
+            f'<h2>{e(s.full_name)}</h2>'
+            f'<p>{e(ROLE_LABELS.get(s.role, s.role))}</p>'
+            f'<p>المركز: {centers}</p></div>'
+            f'<footer><span>رقم الموظف: {s.id:05d}</span>'
+            f'<span>تاريخ الإصدار: {date.today().strftime("%Y/%m/%d")}</span></footer>'
+            '</article>')
+    cards_html = "".join(cards) if cards else '<p>لا توجد حسابات نشطة لطباعة بطاقاتها.</p>'
+    return HTMLResponse("""<!doctype html><html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بطاقات الموظفين | جمعية نور الأمل</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Tahoma,Arial,sans-serif;color:#16324a;background:#eef4f7;margin:0;padding:22px}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+button,a.button{font:inherit;border:0;border-radius:8px;padding:10px 16px;background:#145485;color:white;cursor:pointer;text-decoration:none}
+.cards{display:flex;gap:10mm;flex-wrap:wrap}
+.employee-card{width:85.6mm;height:54mm;flex:0 0 85.6mm;background:white;border:1px solid #acc6d3;
+border-radius:4mm;overflow:hidden;display:flex;flex-direction:column;break-inside:avoid;page-break-inside:avoid}
+.employee-card header{display:flex;align-items:center;gap:3mm;background:#125083;color:white;padding:3mm 4mm;height:16mm}
+.employee-card header img{width:13mm;height:12mm;object-fit:contain;background:white;border-radius:2mm}
+.employee-card header strong{display:block;font-size:12px}
+.employee-card header small{display:block;font-size:8px}
+.employee-content{padding:2mm 4mm;flex:1;overflow:hidden}
+.employee-content h2{font-size:15px;margin:1.5mm 0 .5mm;line-height:1.2}
+.employee-content p{margin:0;font-size:10px;line-height:1.4}
+.tag{font-size:8px;color:#11764c;font-weight:bold}
+.employee-card footer{background:#e6f5ed;border-top:1px solid #b2d8bf;display:flex;justify-content:space-between;
+padding:1.6mm 3mm;font-size:8px}
+@media print{
+@page{size:A4 portrait;margin:12mm}
+body{margin:0;padding:0;background:white}
+.toolbar{display:none}
+.cards{gap:6mm}
+.employee-card{border-color:#777;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}
+</style></head><body>
+<div class="toolbar"><button onclick="window.print()">طباعة البطاقات أو حفظ PDF</button>
+<a class="button" href="/platform/staff">العودة إلى الموظفين</a>
+<small>بطاقات داخلية، وليست بديلاً عن بطاقة الهوية المدنية. لا تعرض كلمات المرور.</small></div>
+<div class="cards">""" + cards_html + "</div></body></html>")
+
+
+@app.get("/platform/staff/cards", response_class=HTMLResponse)
+def all_staff_cards(db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    staff = db.scalars(select(Staff).where(Staff.enabled.is_(True)).order_by(Staff.id)).all()
+    return staff_cards_html(staff, db)
+
+
+@app.get("/platform/staff/{staff_id:int}/card", response_class=HTMLResponse)
+def one_staff_card(staff_id: int, db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    staff = db.get(Staff, staff_id)
+    if not staff:
+        raise HTTPException(404, "الموظف غير موجود")
+    if not staff.enabled:
+        raise HTTPException(409, "لا يمكن إصدار بطاقة لحساب معطل")
+    return staff_cards_html([staff], db)
+
 
 @app.post("/platform/staff/{staff_id}/toggle")
-def toggle_staff(staff_id:int,request:Request,token:str=Form(alias="_csrf"),db:Session=Depends(get_db),user=Depends(actor)):
-    require_role(user,"admin");assert_csrf(request,token)
-    s=db.get(Staff,staff_id)
-    if not s:raise HTTPException(404)
-    s.enabled=not s.enabled;log(db,user,"staff_toggle","staff",s.id,str(s.enabled));db.commit()
+def toggle_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf"),
+                 db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    assert_csrf(request, token)
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404)
+    s.enabled = not s.enabled
+    s.session_version += 1
+    log(db, user, "staff_toggle", "staff", s.id, str(s.enabled))
+    db.commit()
     return redirect("/platform/staff")
 
+
 @app.post("/platform/staff/{staff_id}/password")
-def change_staff_password(staff_id:int,request:Request,token:str=Form(alias="_csrf"),password:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
-    require_role(user,"admin");assert_csrf(request,token)
-    s=db.get(Staff,staff_id)
-    if not s:raise HTTPException(404)
-    s.password_hash=hash_password(password);s.session_version+=1;log(db,user,"password_reset","staff",s.id);db.commit()
-    return redirect("/platform/staff")
+def change_staff_password(staff_id: int, request: Request, token: str = Form(alias="_csrf"),
+                          password: str = Form(), db: Session = Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin")
+    assert_csrf(request, token)
+    s = db.get(Staff, staff_id)
+    if not s:
+        raise HTTPException(404)
+    s.password_hash = hash_password(password)
+    s.session_version += 1
+    log(db, user, "password_reset", "staff", s.id)
+    db.commit()
+    return redirect("/platform/staff/{}/edit".format(s.id))
+
 
 @app.post("/platform/assign")
 def assign_staff(request:Request,token:str=Form(alias="_csrf"),staff_id:int=Form(),center_id:int=Form(),track_id:int=Form(),subject:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
