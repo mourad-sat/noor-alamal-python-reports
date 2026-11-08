@@ -152,6 +152,7 @@ def page(request, user, title, body):
         menu.append(("معلومات بطاقتي", "/platform/profile"))
         menu.append(("تغيير كلمة المرور", "/platform/password"))
     if user["role"] in ("admin","coordinator"):
+        menu.append(("استكمال ملفات المستفيدين", "/platform/profile-completeness"))
         menu.append(("مراجعة تصحيحات الحضور", "/platform/attendance/corrections"))
         menu.append(("استيراد Excel", "/platform/import"))
         menu.append(("كشوف النقط PDF", "/platform/exports/grades"))
