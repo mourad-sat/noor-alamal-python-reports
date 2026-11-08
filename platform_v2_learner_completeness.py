@@ -30,7 +30,7 @@ def missing_profile_fields(learner: Learner) -> list[str]:
     ]
 
 
-@app.get("/platform/learners/completeness", response_class=HTMLResponse)
+@app.get("/platform/profile-completeness", response_class=HTMLResponse)
 def learner_completeness(
     request: Request,
     track_id: int | None = None,
@@ -57,7 +57,7 @@ def learner_completeness(
         for center_id in sorted({t.center_id for t in visible_tracks}):
             links = "".join(
                 f'<a class="button" style="display:inline-block;margin:5px" '
-                f'href="/platform/learners/completeness?track_id={t.id}">{e(t.name)}</a>'
+                f'href="/platform/profile-completeness?track_id={t.id}">{e(t.name)}</a>'
                 for t in visible_tracks if t.center_id == center_id
             )
             blocks.append(f'<section><h2>{e(centers[center_id].name)}</h2>{links}</section>')
@@ -104,7 +104,7 @@ def learner_completeness(
     if page_number > pages:
         raise HTTPException(404, "هذه الصفحة غير موجودة")
     nav = " ".join(
-        f'<a class="button" href="/platform/learners/completeness?track_id={selected.id}&page_number={p}">'
+        f'<a class="button" href="/platform/profile-completeness?track_id={selected.id}&page_number={p}">'
         f'{"السابق" if p < page_number else "التالي"}</a>'
         for p in (page_number - 1, page_number + 1) if 1 <= p <= pages
     )
@@ -115,7 +115,7 @@ def learner_completeness(
         f'من أصل {len(rows)} ملفاً معروضاً.</p>'
         '<p class="subtle">هذه لائحة مراجعة إدارية لحقول اختيارية وليست حكماً '
         'على أهلية المستفيد. لا يتم تعديل أي بيانات تلقائياً.</p>'
-        '<a class="button" href="/platform/learners/completeness">اختيار مسلك آخر</a>'
+        '<a class="button" href="/platform/profile-completeness">اختيار مسلك آخر</a>'
         '</section>'
     )
     body = intro + '<section><h2>الملفات المطلوب مراجعتها</h2>' + table(
