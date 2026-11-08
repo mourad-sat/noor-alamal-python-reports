@@ -227,20 +227,97 @@ def ensure_data(db):
 
 @app.get("/platform", response_class=HTMLResponse)
 def home(request: Request, db: Session=Depends(get_db), user=Depends(actor)):
+    """Role-scoped overview with a clear next action and center summaries."""
     ensure_data(db)
-    center_ids = [x[0] for x in center_options(db,user)]
-    enrollments = db.scalars(select(Enrollment).where(Enrollment.center_id.in_(center_ids))).all()
-    pending = db.scalars(select(Attendance).join(Enrollment, Attendance.enrollment_id == Enrollment.id).where(
-        Enrollment.center_id.in_(center_ids), Attendance.status == "absent", Attendance.permit_id.is_(None))).all()
-    notices = db.scalars(select(Notice).join(Enrollment, Notice.enrollment_id == Enrollment.id).where(
-        Enrollment.center_id.in_(center_ids), Notice.status == "draft")).all()
-    numbers = f'<section><h2>مؤشرات العمل</h2><p>المستفيدون المسجلون: <strong>{len(enrollments)}</strong> · حالات الغياب المعلقة: <strong class="danger">{len(pending)}</strong> · مسودات الإشعارات الورقية: <strong>{len(notices)}</strong></p><p class="subtle">حالة الغياب باللون الأحمر تعني وجود غياب لم تُصدر بشأنه رخصة دخول. الإقصاء التأديبي حالة منفصلة.</p></section>'
-    blocks = []
-    for c in db.scalars(select(Center)).all():
-        if c.id not in center_ids: continue
-        ts = db.scalars(select(Track).where(Track.center_id==c.id)).all()
-        blocks.append(f'<section><h2>{e(c.name)} · {e(c.area)}</h2><p>المستفيدون: {sum(x.center_id==c.id for x in enrollments)} · المسالك المهيأة: {len(ts)}</p></section>')
-    return page(request,user,"لوحة القيادة",numbers+"".join(blocks))
+    center_ids = [center_id for center_id, _ in center_options(db, user)]
+    enrollments = db.scalars(
+        select(Enrollment).where(Enrollment.center_id.in_(center_ids))
+    ).all()
+    pending_count = db.scalar(
+        select(func.count()).select_from(Attendance)
+        .join(Enrollment, Attendance.enrollment_id == Enrollment.id)
+        .where(
+            Enrollment.center_id.in_(center_ids),
+            Attendance.status == "absent",
+            Attendance.permit_id.is_(None),
+        )
+    ) or 0
+    notices_count = db.scalar(
+        select(func.count()).select_from(Notice)
+        .join(Enrollment, Notice.enrollment_id == Enrollment.id)
+        .where(
+            Enrollment.center_id.in_(center_ids), Notice.status == "draft",
+        )
+    ) or 0
+    centers = db.scalars(select(Center).where(Center.id.in_(center_ids)).order_by(Center.id)).all()
+    tracks = db.scalars(select(Track).where(Track.center_id.in_(center_ids))).all()
+    center_totals = {c.id: 0 for c in centers}
+    for enrollment in enrollments:
+        center_totals[enrollment.center_id] += 1
+
+    def stat(label: str, value: int, description: str, kind: str) -> str:
+        return (
+            f'<div class="pv2-stat pv2-stat--{kind}">'
+            f'<span class="pv2-stat-label">{e(label)}</span>'
+            f'<strong class="pv2-stat-number">{value}</strong>'
+            f'<span class="pv2-stat-note">{e(description)}</span></div>'
+        )
+
+    intro = (
+        '<div class="pv2-welcome">'
+        '<div><p class="pv2-eyebrow">مساحة العمل اليومية</p>'
+        '<h2>مرحباً بكم في منصة نور الأمل</h2>'
+        '<p>نظرة سريعة على المستفيدين والمهام الإدارية المتاحة لحسابكم.</p></div>'
+        '<a class="pv2-welcome-link" href="/platform/learners">عرض المستفيدين</a>'
+        '</div>'
+    )
+    metrics = (
+        '<section class="pv2-overview" aria-label="المؤشرات الرئيسية">'
+        '<div class="pv2-section-head"><h2>مؤشرات العمل</h2>'
+        '<span>حسب المراكز المتاحة لحسابك</span></div>'
+        '<div class="pv2-stats">'
+        + stat("المستفيدون المسجلون", len(enrollments), "ضمن المراكز المتاحة", "learners")
+        + stat("حصص الغياب المعلّقة", pending_count, "حصص غياب دون رخصة دخول", "absences")
+        + stat("مسودات الإشعارات", notices_count, "مسودات تنتظر المعالجة", "notices")
+        + stat("المراكز المتاحة", len(centers), "حسب صلاحيات المستخدم", "centers")
+        + '</div><p class="pv2-clarification">الغياب المعلّق مؤشر للمتابعة الإدارية، '
+        'وليس قراراً تأديبياً.</p></section>'
+    )
+    actions = [
+        ("المستفيدون", "استعراض الملفات حسب المركز والمسلك", "/platform/learners", "👥"),
+        ("تقارير الحصص", "متابعة التقارير والأنشطة اليومية", "/platform/reports", "▤"),
+        ("جدولة الحصص", "الاطلاع على المواعيد والبرنامج", "/platform/schedule", "▦"),
+        ("التنبيهات", "مراجعة الإشعارات والتنبيهات", "/platform/notifications", "◉"),
+    ]
+    if user["role"] in ("admin", "coordinator"):
+        actions.append(("استكمال الملفات", "مراجعة المعلومات التي تحتاج استكمالاً", "/platform/profile-completeness", "✓"))
+    shortcuts = (
+        '<section class="pv2-overview"><div class="pv2-section-head"><h2>الوصول السريع</h2>'
+        '<span>اختصارات لأكثر المهام استعمالاً</span></div><div class="pv2-quick-grid">'
+        + "".join(
+            f'<a class="pv2-quick-link" href="{url}">'
+            f'<span class="pv2-quick-icon" aria-hidden="true">{symbol}</span>'
+            f'<span><strong>{e(label)}</strong><small>{e(description)}</small></span>'
+            '<span class="pv2-quick-arrow" aria-hidden="true">←</span></a>'
+            for label, description, url, symbol in actions
+        ) + '</div></section>'
+    )
+    center_cards = "".join(
+        '<article class="pv2-center-card">'
+        f'<h3>{e(center.name)}</h3><p>{e(center.area)}</p>'
+        '<div class="pv2-center-meta">'
+        f'<span><strong>{center_totals[center.id]}</strong> مستفيد</span>'
+        f'<span><strong>{sum(t.center_id == center.id for t in tracks)}</strong> مسلك</span>'
+        '</div></article>'
+        for center in centers
+    )
+    centers_section = (
+        '<section class="pv2-overview"><div class="pv2-section-head"><h2>المراكز</h2>'
+        '<span>ملخص حسب نطاق الصلاحيات</span></div>'
+        f'<div class="pv2-centers-grid">{center_cards or "<p>لا توجد مراكز متاحة.</p>"}</div>'
+        '</section>'
+    )
+    return page(request, user, "لوحة القيادة", intro + metrics + shortcuts + centers_section)
 
 @app.get("/platform/years", response_class=HTMLResponse)
 def years_page(request:Request, db:Session=Depends(get_db), user=Depends(actor)):
