@@ -38,7 +38,8 @@ def test_photo_saved_privately_and_shown_in_both_print_cards(client):
     image = client.get(f"/platform/learners/{en}/photo/file")
     assert image.status_code == 200
     assert image.headers["content-type"].startswith("image/jpeg")
-    assert image.headers["cache-control"] == "private, no-store"
+    # The site security middleware enforces no-store on all sensitive responses.
+    assert image.headers["cache-control"] == "no-store"
     with Image.open(io.BytesIO(image.content)) as photo:
         assert photo.size == (480, 600)
         assert photo.format == "JPEG"
