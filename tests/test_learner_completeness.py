@@ -1,5 +1,10 @@
 """Regression tests for the read-only profile completeness checklist."""
 from types import SimpleNamespace
+from pathlib import Path
+import sys
+
+# pytest can collect tests/ without adding the repository root to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import app
 from platform_v2_learner_completeness import CHECKLIST, missing_profile_fields
