@@ -650,36 +650,98 @@ def assign_staff(request:Request,token:str=Form(alias="_csrf"),staff_id:int=Form
     return redirect("/platform/staff")
 
 
-@app.get("/platform/learners",response_class=HTMLResponse)
-def learners_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+@app.get("/platform/learners", response_class=HTMLResponse)
+def learners_page(request: Request, track_id: int | None = None,
+                  db: Session = Depends(get_db), user=Depends(actor)):
+    """Choose a center and track first; never show an unfiltered learner roster."""
     ensure_data(db)
-    csrf=request.session["csrf"]
-    centers=center_options(db,user)
-    enrolls=db.scalars(select(Enrollment).order_by(Enrollment.id.desc()).limit(800)).all()
-    enrolls=[en for en in enrolls if center_allowed(user,en.center_id) and (
-        user["role"] in ("admin","coordinator") or any(a.track_id==en.track_id for a in user["assignments"]))]
-    rows=[]
+    visible_tracks = db.scalars(select(Track).order_by(Track.center_id, Track.year_id, Track.name)).all()
+    visible_tracks = [
+        track for track in visible_tracks
+        if center_allowed(user, track.center_id) and (
+            user["role"] in ("admin", "coordinator")
+            or any(a.track_id == track.id for a in user["assignments"])
+        )
+    ]
+    if track_id is None:
+        sections = [
+            '<section><h2>اختيار المركز والمسلك</h2>'
+            '<p class="subtle">لن تظهر أسماء المستفيدين حتى تدخل إلى المسلك الذي تريده. '
+            'اختر المركز ثم اضغط على اسم المسلك لعرض لائحته فقط.</p></section>'
+        ]
+        for center_id, center_name in center_options(db, user):
+            center_tracks = [track for track in visible_tracks if track.center_id == center_id]
+            buttons = "".join(
+                '<a class="button" style="display:inline-flex;align-items:center;'
+                'margin:6px 0 6px 12px;gap:6px" '
+                f'href="/platform/learners?track_id={track.id}">'
+                f'{e(track.name)} <small>({e(db.get(Year,track.year_id).label)})</small></a>'
+                for track in center_tracks
+            )
+            sections.append(
+                f'<section><h2>{e(center_name)}</h2>'
+                + (buttons or '<p class="subtle">لم تُضف مسالك متاحة لهذا المركز بعد.</p>')
+                + '</section>'
+            )
+        return page(request, user, "المستفيدون حسب المركز والمسلك", "".join(sections))
+
+    selected = next((track for track in visible_tracks if track.id == track_id), None)
+    if selected is None:
+        # Never leak learner counts, names or metadata for other centers/tracks.
+        raise HTTPException(403, "هذا المسلك غير متاح لحسابك.")
+    center = db.get(Center, selected.center_id)
+    year = db.get(Year, selected.year_id)
+    enrolls = db.scalars(
+        select(Enrollment).where(Enrollment.track_id == selected.id)
+        .order_by(Enrollment.id.desc()).limit(800)
+    ).all()
+    rows = []
     for en in enrolls:
-        l=db.get(Learner,en.learner_id)
-        pend=db.scalar(select(func.count()).select_from(Attendance).where(Attendance.enrollment_id==en.id,
-                        Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
-        disciplinary=disciplinary_status(db,en)
-        state='<span class="danger">غياب معلق</span>' if pend else '<span class="good">لا غياب معلق</span>'
-        if disciplinary:state+=' · <span class="danger">إقصاء تأديبي</span>'
-        rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',e(db.get(Center,en.center_id).name),
-                     e(db.get(Track,en.track_id).name),state])
-    body=f"<section>{table(['المستفيد','المركز','المسلك','الحالة'],rows)}</section>"
-    if user["role"] in ("admin","coordinator"):
-        years=db.scalars(select(Year)).all()
-        body='<section><h2>تسجيل مستفيد في سنة ومسلك واحد</h2>'+form("/platform/learners",csrf,
-            field("full_name","اسم المستفيد")+choose("gender","الجنس",[("","غير محدد"),("ذكر","ذكر"),("أنثى","أنثى")])+
-            field("born_on","تاريخ الازدياد","date",False)+field("birthplace","مكان الازدياد",required=False)+
-            field("phone","هاتف المستفيد",required=False)+field("address","العنوان",required=False)+
-            field("guardian_name","اسم ولي الأمر",required=False)+field("guardian_relationship","الصفة",required=False)+
-            field("guardian_phone","هاتف ولي الأمر للقاصر",required=False)+
-            choose("year_id","السنة",[(y.id,y.label) for y in years if not y.archived])+
-            choose("track_id","المسلك",tracks_options(db,user)),"تسجيل")+'</section>'+body
-    return page(request,user,"ملفات المستفيدين",body)
+        learner = db.get(Learner, en.learner_id)
+        pending = db.scalar(
+            select(func.count()).select_from(Attendance).where(
+                Attendance.enrollment_id == en.id, Attendance.status == "absent",
+                Attendance.permit_id.is_(None)
+            )
+        ) or 0
+        disciplinary = disciplinary_status(db, en)
+        status = ('<span class="danger">غياب معلق</span>' if pending
+                  else '<span class="good">لا غياب معلق</span>')
+        if disciplinary:
+            status += ' · <span class="danger">إقصاء تأديبي</span>'
+        details = f'<a href="/platform/learners/{en.id}">فتح الملف</a>'
+        if user["role"] in ("admin", "coordinator"):
+            details += f' · <a href="/platform/learners/{en.id}/card">طباعة البطاقة</a>'
+        rows.append([e(learner.full_name), e(learner.source_code) or "—", status, details])
+    title = f'{center.name} · {selected.name} · {year.label}'
+    body = (f'<section><h2>{e(title)}</h2>'
+            f'<p class="subtle">عدد المستفيدين في هذا المسلك: {len(rows)}'
+            ' · اللائحة مقتصرة على هذا المسلك فقط.</p>'
+            '<a class="button" href="/platform/learners">العودة إلى اختيار المسالك</a>'
+            '</section>')
+    body += '<section><h2>لائحة المستفيدين</h2>' + table(
+        ["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows
+    ) + '</section>'
+    if user["role"] in ("admin", "coordinator") and not year.archived:
+        csrf = request.session["csrf"]
+        registration_fields = (
+            field("full_name", "اسم المستفيد") +
+            choose("gender", "الجنس", [("", "غير محدد"), ("ذكر", "ذكر"), ("أنثى", "أنثى")]) +
+            field("born_on", "تاريخ الازدياد", "date", False) +
+            field("birthplace", "مكان الازدياد", required=False) +
+            field("phone", "هاتف المستفيد", required=False) +
+            field("address", "العنوان", required=False) +
+            field("guardian_name", "اسم ولي الأمر", required=False) +
+            field("guardian_relationship", "صلة القرابة", required=False) +
+            field("guardian_phone", "هاتف ولي الأمر", required=False) +
+            f'<input type="hidden" name="year_id" value="{year.id}">' +
+            f'<input type="hidden" name="track_id" value="{selected.id}">'
+        )
+        body += ('<section><h2>تسجيل مستفيد جديد في هذا المسلك</h2>'
+                 + form("/platform/learners", csrf, registration_fields, "تسجيل المستفيد")
+                 + '</section>')
+    return page(request, user, "لائحة مستفيدي المسلك", body)
+
 
 def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
     at=at or date.today()
