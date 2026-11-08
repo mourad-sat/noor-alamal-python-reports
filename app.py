@@ -461,6 +461,7 @@ import platform_v2_exports  # noqa: E402,F401
 import platform_v2_aggregates  # noqa: E402,F401
 import platform_v2_attachments  # noqa: E402,F401
 import platform_v2_attendance_corrections  # noqa: E402,F401
+import platform_v2_staff_profiles  # noqa: E402,F401
 import platform_v2_privacy  # noqa: E402,F401
 import platform_v2_schedule_exceptions  # noqa: E402,F401
 import platform_v2_report_print  # noqa: E402,F401
