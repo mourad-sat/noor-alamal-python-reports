@@ -43,6 +43,22 @@ class Staff(Base):
     session_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+class StaffProfile(Base):
+    """Optional professional card details entered by the employee personally.
+
+    No national ID, birth date, residential address, or other sensitive IDs.
+    Photo is private and served only in an authenticated printable card.
+    """
+    __tablename__ = "v2_staff_profiles"
+    staff_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff"), ondelete="CASCADE"), primary_key=True)
+    specialty: Mapped[str] = mapped_column(String(100), default="")
+    work_phone: Mapped[str] = mapped_column(String(35), default="")
+    work_email: Mapped[str] = mapped_column(String(150), default="")
+    photo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    photo_mime: Mapped[str] = mapped_column(String(30), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class Track(Base):
     __tablename__ = "v2_tracks"
     id: Mapped[int] = mapped_column(primary_key=True)
