@@ -701,8 +701,7 @@ def learner_create(request:Request,token:str=Form(alias="_csrf"),full_name:str=F
     if not t or not y or t.year_id!=year_id or not center_allowed(user,t.center_id) or not full_name.strip():
         raise HTTPException(422,"السنة أو المركز أو المسلك أو الاسم غير صحيح")
     if born_on and born_on>date.today():raise HTTPException(422,"تاريخ الازدياد غير صحيح")
-    if born_on and (date.today() - born_on).days < 18*365 and not guardian_phone.strip():
-        raise HTTPException(422,"هاتف ولي الأمر إلزامي بالنسبة للقاصر")
+    # Initial registration accepts partial information; complete missing contacts later.
     match=db.scalar(select(Learner).where(Learner.full_name==full_name.strip()[:180],Learner.born_on==born_on))
     if match: raise HTTPException(409,"توجد بطاقة مشابهة؛ راجعها لتجنب التكرار")
     l=Learner(full_name=full_name.strip()[:180],gender=gender[:20],born_on=born_on,birthplace=birthplace[:120],
@@ -725,6 +724,10 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
     body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
     if user["role"] in ("admin","coordinator"):
+        body += f'<section><a class="button" href="/platform/learners/{en.id}/edit">تعديل الملف واستكمال المعلومات الناقصة</a></section>'
+        if l.born_on and (date.today()-l.born_on).days < 18*365 and not l.guardian_phone:
+            body += '<section><p class="danger">هاتف ولي الأمر لم يُسجل بعد؛ يرجى استكماله لاحقًا من زر التعديل.</p></section>'
+    if user["role"] in ("admin","coordinator"):
         body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
     arows=[[e(s.held_on),e(a.status),e("مغطى بإذن" if a.permit_id else "معلّق" if a.status=="absent" else "—")] for a,s in atts]
     body+=f'<section><h2>سجل الحضور والغياب</h2>{table(["التاريخ","الحالة","إذن الدخول"],arows)}</section>'
@@ -735,6 +738,66 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     items=[[e(k),e(v) if v is not None else "غير مكتمل"] for k,v in results.items()]
     body+='<section><h2>المعدلات المعتمدة (من 20)</h2>'+table(["المادة / المعدل","النقطة"],items)+'</section>'
     return page(request,user,"ملف المستفيد",body)
+
+
+@app.get("/platform/learners/{enrollment_id:int}/edit", response_class=HTMLResponse)
+def learner_edit_page(enrollment_id:int, request:Request,
+                      db:Session=Depends(get_db), user=Depends(actor)):
+    require_role(user, "admin", "coordinator")
+    en = learner_scope(db,user,enrollment_id)
+    l = db.get(Learner,en.learner_id)
+    fields = (
+        field("full_name","الاسم الكامل",value=l.full_name) +
+        choose("gender","الجنس",[("","غير محدد"),("ذكر","ذكر"),("أنثى","أنثى")],selected=l.gender) +
+        field("born_on","تاريخ الازدياد","date",False,l.born_on.isoformat() if l.born_on else "") +
+        field("birthplace","مكان الازدياد",required=False,value=l.birthplace) +
+        field("phone","هاتف المستفيد",required=False,value=l.phone) +
+        field("address","العنوان",required=False,value=l.address) +
+        field("guardian_name","اسم ولي الأمر",required=False,value=l.guardian_name) +
+        field("guardian_relationship","صلة القرابة",required=False,value=l.guardian_relationship) +
+        field("guardian_phone","هاتف ولي الأمر",required=False,value=l.guardian_phone)
+    )
+    content = (f'<section><h2>استكمال ملف: {e(l.full_name)}</h2>'
+               '<p class="subtle">يمكن استكمال البيانات الناقصة لاحقًا. لا تغيّر هذه الصفحة السنة أو المركز أو المسلك.</p>' +
+               form(f"/platform/learners/{en.id}/edit",request.session["csrf"],fields,"حفظ البيانات") +
+               '</section>' + f'<p><a class="button" href="/platform/learners/{en.id}">العودة إلى ملف المستفيد</a></p>')
+    return page(request,user,"تعديل ملف المستفيد",content)
+
+
+@app.post("/platform/learners/{enrollment_id:int}/edit")
+def learner_edit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf"),
+                 full_name:str=Form(),gender:str=Form(""),born_on:date|None=Form(None),
+                 birthplace:str=Form(""),phone:str=Form(""),address:str=Form(""),
+                 guardian_name:str=Form(""),guardian_relationship:str=Form(""),
+                 guardian_phone:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+    require_role(user,"admin","coordinator")
+    assert_csrf(request,token)
+    en=learner_scope(db,user,enrollment_id)
+    l=db.get(Learner,en.learner_id)
+    full_name=full_name.strip()
+    if (len(full_name)<3 or len(full_name)>180 or full_name[:1] in ("=","+","-","@")
+        or gender not in ("","ذكر","أنثى","M","F","m","f")
+        or (born_on and born_on>date.today()) or len(birthplace.strip())>120
+        or len(phone.strip())>45 or len(address.strip())>240
+        or len(guardian_name.strip())>180 or len(guardian_relationship.strip())>70
+        or len(guardian_phone.strip())>45):
+        raise HTTPException(422,"البيانات غير صالحة؛ راجع الاسم وتاريخ الميلاد والخانات.")
+    existing=db.scalar(select(Learner.id).where(Learner.id!=l.id,
+       Learner.full_name==full_name,Learner.born_on==born_on).limit(1))
+    if existing is not None:raise HTTPException(409,"يوجد ملف آخر بنفس الاسم وتاريخ الازدياد")
+    l.full_name=full_name
+    l.gender=gender
+    l.born_on=born_on
+    l.birthplace=birthplace.strip()
+    l.phone=phone.strip()
+    l.address=address.strip()
+    l.guardian_name=guardian_name.strip()
+    l.guardian_relationship=guardian_relationship.strip()
+    l.guardian_phone=guardian_phone.strip()
+    log(db,user,"update","learner",l.id,"استكمال معلومات الملف")
+    db.commit()
+    return redirect(f"/platform/learners/{en.id}")
+
 
 @app.post("/platform/learners/{enrollment_id}/permit")
 def grant_permit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf"),reason:str=Form(),

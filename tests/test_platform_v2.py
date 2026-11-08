@@ -178,15 +178,16 @@ def test_partial_excel_csv_import_and_qr_proof(client):
     response=client.post("/platform/import/preview",data={"_csrf":admin,"track_id":"1"},
          files={"file":("sample.csv",rows,"text/csv")})
     assert response.status_code==200,response.text[:600]
-    assert "صفوف صالحة: 1" in response.text
-    assert "مرفوضة: 1" in response.text
+    assert "صفوف صالحة: 2" in response.text
+    assert "مرفوضة: 0" in response.text
+    assert "هواتف أولياء أمور القاصرين غير المكتملة: 1" in response.text
     match_payload=re.search('name="payload" value="([^"]+)"',response.text)
     match_signature=re.search('name="signature" value="([^"]+)"',response.text)
     assert match_payload and match_signature
     committed=post(client,"/platform/import/commit",admin,payload=html.unescape(match_payload.group(1)),
         signature=match_signature.group(1))
     assert committed.status_code==200,committed.text[:500]
-    assert "تم إدخال 1 مستفيدًا" in committed.text
+    assert "تم إدخال 2 مستفيدًا" in committed.text
     assert "سارة الاختبار" in client.get("/platform/learners").text
     export=post(client,"/platform/exports/grades/print",admin,year_id=1,center_id=1,track_id=1)
     assert export.status_code==200,export.text[:500]
@@ -198,6 +199,39 @@ def test_partial_excel_csv_import_and_qr_proof(client):
     assert verify.status_code==200
     assert "البيانات الإلكترونية المعتمدة" in verify.text
     assert "سارة الاختبار" not in verify.text
+
+
+def test_partial_import_and_manual_completion_of_missing_guardian_fields(client):
+    import re
+    import html
+    admin=setup_org(client)
+    rows=(
+        "الاسم الكامل,الجنس,تاريخ الازدياد,مكان الازدياد\n"
+        "مستفيد للقاصر,ذكر,2012-01-09,سلا\n"
+    ).encode("utf-8-sig")
+    preview=client.post("/platform/import/preview",data={"_csrf":admin,"track_id":"1"},
+        files={"file":("learners.csv",rows,"text/csv")})
+    assert preview.status_code==200
+    assert "صفوف صالحة: 1" in preview.text
+    assert "مرفوضة: 0" in preview.text
+    payload=re.search('name="payload" value="([^"]+)"',preview.text).group(1)
+    signature=re.search('name="signature" value="([^"]+)"',preview.text).group(1)
+    result=post(client,"/platform/import/commit",admin,payload=html.unescape(payload),signature=signature)
+    assert result.status_code==200 and "تم إدخال 1 مستفيدًا" in result.text
+    info=client.get("/platform/learners/1")
+    assert info.status_code==200 and "يرجى استكماله لاحقًا" in info.text
+    assert "/platform/learners/1/edit" in info.text
+    editing=client.get("/platform/learners/1/edit")
+    assert editing.status_code==200
+    assert "مستفيد للقاصر" in editing.text
+    assert post(client,"/platform/learners/1/edit","bad",full_name="مستفيد للقاصر").status_code==403
+    saved=post(client,"/platform/learners/1/edit",admin,
+      full_name="مستفيد للقاصر",gender="ذكر",born_on="2012-01-09",birthplace="سلا",
+      phone="",address="",guardian_name="ولي المستفيد",
+      guardian_relationship="الأب",guardian_phone="0612345678")
+    assert saved.status_code==303
+    assert "0612345678" in client.get("/platform/learners/1").text
+    assert "لم يُسجل بعد" not in client.get("/platform/learners/1").text
 
 
 def test_approved_attendance_is_locked_and_requires_coordinator_review(client):
