@@ -99,7 +99,7 @@ def attendance_follow_up(
     intro = (
         f'<section><h2>{e(center.name)} · {e(selected.name)} · {e(year.label)}</h2>'
         f'<p>ملفات بها غياب معلّق: <strong>{total}</strong></p>'
-        '<p class="subtle">الغيبـة المعلّقة هنا هي حصة سُجل فيها المستفيد غائباً '
+        '<p class="subtle">حصة الغياب المعلّقة هنا هي حصة سُجل فيها المستفيد غائباً '
         'ولم ترتبط برخصة دخول. هذه شاشة متابعة وليست قراراً تأديبياً.</p>'
         '<a class="button" href="/platform/attendance/follow-up">اختيار مسلك آخر</a>'
         '</section>'
