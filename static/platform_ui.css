@@ -119,3 +119,18 @@
 }
 @media(max-width:420px){.pv2-stats{grid-template-columns:minmax(0,1fr)}}
 @media print{.pv2-welcome{color:#143d59;background:#fff;box-shadow:none;border:1px solid #ddd}.pv2 .pv2-welcome h2,.pv2 .pv2-welcome p{color:#143d59}.pv2-welcome-link{display:none}}
+
+
+/* Learner roster: clear choice-first navigation, scannable tables, progressive forms. */
+.pv2 .pv2-roster-intro{background:linear-gradient(135deg,#fff,#f5fafb);border-right:4px solid #178c79}
+.pv2-track-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pv2-track-link{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:66px;padding:15px 17px;border-radius:12px;border:1px solid #d9e7ed;background:#f8fbfd;color:#184b68;font-weight:700;text-decoration:none}
+.pv2-track-link:hover{background:#eaf7f4;border-color:#8cccbc;color:#086e5b}
+.pv2-track-link small{font-size:11px;color:#648298;font-weight:600}
+.pv2-roster-list .table-scroll{box-shadow:0 3px 14px #19426007}
+.pv2-roster-list tbody td:first-child{font-weight:700;color:#163f5e}
+.pv2-roster-register summary{cursor:pointer;font-size:17px;font-weight:700;color:#115b7e;padding:9px 0;min-height:44px}
+.pv2-roster-register details[open] summary{border-bottom:1px solid #e1eaf0;margin-bottom:18px}
+.pv2-roster-register details>p{margin:0 0 20px}
+@media(max-width:700px){.pv2-track-grid{grid-template-columns:minmax(0,1fr)}.pv2-track-link{min-height:60px}}
+@media print{.pv2-roster-register{display:none!important}}
