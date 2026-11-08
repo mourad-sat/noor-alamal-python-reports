@@ -650,36 +650,98 @@ def assign_staff(request:Request,token:str=Form(alias="_csrf"),staff_id:int=Form
     return redirect("/platform/staff")
 
 
-@app.get("/platform/learners",response_class=HTMLResponse)
-def learners_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
+@app.get("/platform/learners", response_class=HTMLResponse)
+def learners_page(request: Request, track_id: int | None = None,
+                  db: Session = Depends(get_db), user=Depends(actor)):
+    """Choose a center and track first; never show an unfiltered learner roster."""
     ensure_data(db)
-    csrf=request.session["csrf"]
-    centers=center_options(db,user)
-    enrolls=db.scalars(select(Enrollment).order_by(Enrollment.id.desc()).limit(800)).all()
-    enrolls=[en for en in enrolls if center_allowed(user,en.center_id) and (
-        user["role"] in ("admin","coordinator") or any(a.track_id==en.track_id for a in user["assignments"]))]
-    rows=[]
+    visible_tracks = db.scalars(select(Track).order_by(Track.center_id, Track.year_id, Track.name)).all()
+    visible_tracks = [
+        track for track in visible_tracks
+        if center_allowed(user, track.center_id) and (
+            user["role"] in ("admin", "coordinator")
+            or any(a.track_id == track.id for a in user["assignments"])
+        )
+    ]
+    if track_id is None:
+        sections = [
+            '<section><h2>اختيار المركز والمسلك</h2>'
+            '<p class="subtle">لن تظهر أسماء المستفيدين حتى تدخل إلى المسلك الذي تريده. '
+            'اختر المركز ثم اضغط على اسم المسلك لعرض لائحته فقط.</p></section>'
+        ]
+        for center_id, center_name in center_options(db, user):
+            center_tracks = [track for track in visible_tracks if track.center_id == center_id]
+            buttons = "".join(
+                '<a class="button" style="display:inline-flex;align-items:center;'
+                'margin:6px 0 6px 12px;gap:6px" '
+                f'href="/platform/learners?track_id={track.id}">'
+                f'{e(track.name)} <small>({e(db.get(Year,track.year_id).label)})</small></a>'
+                for track in center_tracks
+            )
+            sections.append(
+                f'<section><h2>{e(center_name)}</h2>'
+                + (buttons or '<p class="subtle">لم تُضف مسالك متاحة لهذا المركز بعد.</p>')
+                + '</section>'
+            )
+        return page(request, user, "المستفيدون حسب المركز والمسلك", "".join(sections))
+
+    selected = next((track for track in visible_tracks if track.id == track_id), None)
+    if selected is None:
+        # Never leak learner counts, names or metadata for other centers/tracks.
+        raise HTTPException(403, "هذا المسلك غير متاح لحسابك.")
+    center = db.get(Center, selected.center_id)
+    year = db.get(Year, selected.year_id)
+    enrolls = db.scalars(
+        select(Enrollment).where(Enrollment.track_id == selected.id)
+        .order_by(Enrollment.id.desc()).limit(800)
+    ).all()
+    rows = []
     for en in enrolls:
-        l=db.get(Learner,en.learner_id)
-        pend=db.scalar(select(func.count()).select_from(Attendance).where(Attendance.enrollment_id==en.id,
-                        Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
-        disciplinary=disciplinary_status(db,en)
-        state='<span class="danger">غياب معلق</span>' if pend else '<span class="good">لا غياب معلق</span>'
-        if disciplinary:state+=' · <span class="danger">إقصاء تأديبي</span>'
-        rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',e(db.get(Center,en.center_id).name),
-                     e(db.get(Track,en.track_id).name),state])
-    body=f"<section>{table(['المستفيد','المركز','المسلك','الحالة'],rows)}</section>"
-    if user["role"] in ("admin","coordinator"):
-        years=db.scalars(select(Year)).all()
-        body='<section><h2>تسجيل مستفيد في سنة ومسلك واحد</h2>'+form("/platform/learners",csrf,
-            field("full_name","اسم المستفيد")+choose("gender","الجنس",[("","غير محدد"),("ذكر","ذكر"),("أنثى","أنثى")])+
-            field("born_on","تاريخ الازدياد","date",False)+field("birthplace","مكان الازدياد",required=False)+
-            field("phone","هاتف المستفيد",required=False)+field("address","العنوان",required=False)+
-            field("guardian_name","اسم ولي الأمر",required=False)+field("guardian_relationship","الصفة",required=False)+
-            field("guardian_phone","هاتف ولي الأمر للقاصر",required=False)+
-            choose("year_id","السنة",[(y.id,y.label) for y in years if not y.archived])+
-            choose("track_id","المسلك",tracks_options(db,user)),"تسجيل")+'</section>'+body
-    return page(request,user,"ملفات المستفيدين",body)
+        learner = db.get(Learner, en.learner_id)
+        pending = db.scalar(
+            select(func.count()).select_from(Attendance).where(
+                Attendance.enrollment_id == en.id, Attendance.status == "absent",
+                Attendance.permit_id.is_(None)
+            )
+        ) or 0
+        disciplinary = disciplinary_status(db, en)
+        status = ('<span class="danger">غياب معلق</span>' if pending
+                  else '<span class="good">لا غياب معلق</span>')
+        if disciplinary:
+            status += ' · <span class="danger">إقصاء تأديبي</span>'
+        details = f'<a href="/platform/learners/{en.id}">فتح الملف</a>'
+        if user["role"] in ("admin", "coordinator"):
+            details += f' · <a href="/platform/learners/{en.id}/card">طباعة البطاقة</a>'
+        rows.append([e(learner.full_name), e(learner.source_code) or "—", status, details])
+    title = f'{center.name} · {selected.name} · {year.label}'
+    body = (f'<section><h2>{e(title)}</h2>'
+            f'<p class="subtle">عدد المستفيدين في هذا المسلك: {len(rows)}'
+            ' · اللائحة مقتصرة على هذا المسلك فقط.</p>'
+            '<a class="button" href="/platform/learners">العودة إلى اختيار المسالك</a>'
+            '</section>')
+    body += '<section><h2>لائحة المستفيدين</h2>' + table(
+        ["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows
+    ) + '</section>'
+    if user["role"] in ("admin", "coordinator") and not year.archived:
+        csrf = request.session["csrf"]
+        registration_fields = (
+            field("full_name", "اسم المستفيد") +
+            choose("gender", "الجنس", [("", "غير محدد"), ("ذكر", "ذكر"), ("أنثى", "أنثى")]) +
+            field("born_on", "تاريخ الازدياد", "date", False) +
+            field("birthplace", "مكان الازدياد", required=False) +
+            field("phone", "هاتف المستفيد", required=False) +
+            field("address", "العنوان", required=False) +
+            field("guardian_name", "اسم ولي الأمر", required=False) +
+            field("guardian_relationship", "صلة القرابة", required=False) +
+            field("guardian_phone", "هاتف ولي الأمر", required=False) +
+            f'<input type="hidden" name="year_id" value="{year.id}">' +
+            f'<input type="hidden" name="track_id" value="{selected.id}">'
+        )
+        body += ('<section><h2>تسجيل مستفيد جديد في هذا المسلك</h2>'
+                 + form("/platform/learners", csrf, registration_fields, "تسجيل المستفيد")
+                 + '</section>')
+    return page(request, user, "لائحة مستفيدي المسلك", body)
+
 
 def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
     at=at or date.today()
@@ -724,7 +786,10 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
     body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
     if user["role"] in ("admin","coordinator"):
-        body += f'<section><a class="button" href="/platform/learners/{en.id}/edit">تعديل الملف واستكمال المعلومات الناقصة</a></section>'
+        body += (f'<section><a class="button" href="/platform/learners/{en.id}/edit">'
+                'تعديل الملف واستكمال المعلومات الناقصة</a> '
+                f'<a class="button" href="/platform/learners/{en.id}/card">'
+                'طباعة بطاقة المستفيد</a></section>')
         if l.born_on and (date.today()-l.born_on).days < 18*365 and not l.guardian_phone:
             body += '<section><p class="danger">هاتف ولي الأمر لم يُسجل بعد؛ يرجى استكماله لاحقًا من زر التعديل.</p></section>'
     if user["role"] in ("admin","coordinator"):
@@ -737,7 +802,99 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     results=transcript(db,en)
     items=[[e(k),e(v) if v is not None else "غير مكتمل"] for k,v in results.items()]
     body+='<section><h2>المعدلات المعتمدة (من 20)</h2>'+table(["المادة / المعدل","النقطة"],items)+'</section>'
+    body += f'<p><a class="button" href="/platform/learners?track_id={en.track_id}">العودة إلى لائحة المسلك</a></p>'
     return page(request,user,"ملف المستفيد",body)
+
+
+@app.get("/platform/learners/{enrollment_id:int}/card", response_class=HTMLResponse)
+def learner_print_card(enrollment_id: int, db: Session = Depends(get_db),
+                       user=Depends(actor)):
+    """Full learner record printable only by the association admin or center coordinator."""
+    require_role(user, "admin", "coordinator")
+    enrollment = learner_scope(db, user, enrollment_id)
+    learner = db.get(Learner, enrollment.learner_id)
+    center = db.get(Center, enrollment.center_id)
+    track = db.get(Track, enrollment.track_id)
+    year = db.get(Year, enrollment.year_id)
+
+    def detail(label: str, value: object) -> str:
+        content = str(value).strip() if value is not None else ""
+        return (f'<div class="info"><span class="field-label">{e(label)}</span>'
+                f'<span class="field-value">{e(content) if content else "لم تُستكمل بعد"}</span></div>')
+
+    personal = (
+        detail("الاسم الكامل", learner.full_name) +
+        detail("الرمز الأصلي", learner.source_code) +
+        detail("الجنس", learner.gender) +
+        detail("تاريخ الازدياد", learner.born_on.isoformat() if learner.born_on else "") +
+        detail("مكان الازدياد", learner.birthplace) +
+        detail("رقم هاتف المستفيد", learner.phone) +
+        detail("عنوان السكن", learner.address)
+    )
+    guardian = (
+        detail("اسم ولي الأمر", learner.guardian_name) +
+        detail("صلة القرابة", learner.guardian_relationship) +
+        detail("هاتف ولي الأمر", learner.guardian_phone)
+    )
+    academic = (
+        detail("المركز", center.name) +
+        detail("السنة التكوينية", year.label) +
+        detail("المسلك المهني", track.name) +
+        detail("رقم الملف داخل المنصة", enrollment.id) +
+        detail("تاريخ التسجيل", enrollment.enrolled_on.isoformat() if enrollment.enrolled_on else "") +
+        detail("وضعية التسجيل", "مسجل" if enrollment.status == "active" else enrollment.status) +
+        detail("تاريخ إنشاء الملف", learner.created_at.date().isoformat() if learner.created_at else "")
+    )
+    return HTMLResponse(f"""<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بطاقة معلومات المستفيد | {e(learner.full_name)}</title>
+<style>
+*{{box-sizing:border-box}}
+body{{margin:0;background:#ecf3f7;color:#18374e;font:15px Tahoma,Arial,sans-serif}}
+.tools{{max-width:210mm;margin:16px auto 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}}
+.tools button,.tools a{{background:#14578c;color:white;border:0;border-radius:7px;
+padding:11px 18px;text-decoration:none;font:inherit;cursor:pointer}}
+.sheet{{width:min(210mm,100%);min-height:275mm;margin:12px auto 22px;background:white;
+padding:16mm;box-shadow:0 8px 32px #14283e21;overflow:hidden}}
+.masthead{{border-bottom:3px solid #178b66;display:flex;align-items:center;gap:17px;padding-bottom:17px}}
+.masthead img{{width:80px;height:76px;object-fit:contain}}
+.association{{font-size:23px;color:#115281;font-weight:700}}
+.program{{font-size:13px;color:#526b7c;margin-top:5px}}
+.document-title{{margin:19px 0 4px;text-align:center;font-size:24px;color:#124d7e}}
+.description{{text-align:center;font-size:12px;color:#60788b;margin:0 0 22px}}
+.section{{margin:18px 0;border:1px solid #d9e5ee;border-radius:9px;overflow:hidden}}
+.section h2{{margin:0;background:#e9f3f9;color:#12527b;padding:10px 14px;font-size:16px;border-right:4px solid #18855b}}
+.items{{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;padding:10px 14px}}
+.info{{display:flex;flex-direction:column;gap:6px;border-bottom:1px solid #e8edf0;padding:9px 3px;min-width:0}}
+.field-label{{color:#5c7588;font-size:11px}}
+.field-value{{font-size:14px;font-weight:600;overflow-wrap:anywhere;white-space:pre-wrap}}
+.footer-note{{font-size:11px;color:#63778a;line-height:1.8;margin-top:24px}}
+.stamp{{display:flex;justify-content:space-between;gap:15px;margin-top:27px}}
+.stamp span{{min-width:180px;padding-top:10px;border-top:1px solid #adc5d3;text-align:center;font-size:12px}}
+@page{{size:A4 portrait;margin:0}}
+@media print{{body{{background:white}}.tools{{display:none}}.sheet{{margin:0;box-shadow:none;
+min-height:0;max-width:none;width:210mm;padding:14mm}}.section{{break-inside:avoid}}
+*{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}}}
+@media(max-width:650px){{.sheet{{padding:15px;min-height:0}}.items{{grid-template-columns:1fr}}
+.masthead img{{width:58px;height:58px}}.association{{font-size:17px}}.stamp span{{min-width:0}}}}
+</style></head><body>
+<div class="tools"><button type="button" onclick="window.print()">طباعة البطاقة أو حفظ PDF</button>
+<a href="/platform/learners/{enrollment.id}">العودة إلى ملف المستفيد</a>
+<span>هذه البطاقة تحتوي على بيانات شخصية؛ لا تُشارك خارج الجهات المخوّل لها.</span></div>
+<main class="sheet">
+<header class="masthead"><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل">
+<div><div class="association">جمعية نور الأمل</div>
+<div class="program">برنامج الفرصة الثانية – الجيل الجديد</div></div></header>
+<h1 class="document-title">بطاقة معلومات المستفيد</h1>
+<p class="description">مستخرج إداري من البيانات المتوفرة بالمنصة — وليس وثيقة هوية رسمية</p>
+<section class="section"><h2>المعلومات الشخصية</h2><div class="items">{personal}</div></section>
+<section class="section"><h2>معلومات ولي الأمر</h2><div class="items">{guardian}</div></section>
+<section class="section"><h2>معلومات التسجيل والتكوين</h2><div class="items">{academic}</div></section>
+<p class="footer-note">الخانات التي تظهر فيها عبارة «لم تُستكمل بعد» يمكن إتمامها من ملف
+المستفيد في المنصة. لا تُعرض كلمات مرور أو بيانات التأديب والنقط في هذه البطاقة.</p>
+<div class="stamp"><span>توقيع المسؤول</span><span>خاتم الجمعية</span></div>
+</main></body></html>""")
 
 
 @app.get("/platform/learners/{enrollment_id:int}/edit", response_class=HTMLResponse)
