@@ -188,7 +188,8 @@ def test_partial_excel_csv_import_and_qr_proof(client):
         signature=match_signature.group(1))
     assert committed.status_code==200,committed.text[:500]
     assert "تم إدخال 2 مستفيدًا" in committed.text
-    assert "سارة الاختبار" in client.get("/platform/learners").text
+    assert "سارة الاختبار" not in client.get("/platform/learners").text
+    assert "سارة الاختبار" in client.get("/platform/learners?track_id=1").text
     export=post(client,"/platform/exports/grades/print",admin,year_id=1,center_id=1,track_id=1)
     assert export.status_code==200,export.text[:500]
     assert "سارة الاختبار" in export.text
