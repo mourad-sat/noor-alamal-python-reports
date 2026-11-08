@@ -7,6 +7,7 @@ import hmac
 import io
 import json
 import re
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -27,7 +28,21 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 1500
 
 def normalize(value):
-    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+    """Match Excel headings despite Arabic hamza/diacritic/spacing variants."""
+    text = unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    text = text.translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ـ": ""}))
+    return re.sub(r"\s+", " ", text)
+
+
+def looks_like_header(values):
+    headings = {normalize(cell) for cell in values if cell is not None}
+    has_name = ("الاسم الكامل" in headings or "اسم المستفيد" in headings or
+                ("الاسم" in headings and ("النسب" in headings or "اللقب" in headings)) or
+                ("full_name" in headings))
+    markers = {"تاريخ الازدياد", "تاريخ الميلاد", "date de naissance",
+               "الجنس", "النوع", "sexe", "الرمز", "مكان الازدياد", "هاتف ولي الامر"}
+    return has_name and bool(headings.intersection(markers))
 
 def cols(row):
     return {normalize(k): v for k,v in row.items() if k is not None}
@@ -58,7 +73,7 @@ def clean_row(raw):
     r=cols(raw)
     full_name=str(column(r,"الاسم الكامل","اسم المستفيد","الاسم والنسب","full name","full_name")).strip()
     if not full_name:
-        first=str(column(r,"الاسم","prenom","prénom","first name")).strip()
+        first=str(column(r,"الاسم","الإسم","prenom","prénom","first name")).strip()
         family=str(column(r,"النسب","اللقب","nom","last name")).strip()
         full_name=" ".join(x for x in (first,family) if x)
     dob_field=column(r,"تاريخ الازدياد","تاريخ الميلاد","تاريخ الازدياد والمكان","date de naissance","birthdate","born_on")
@@ -71,12 +86,14 @@ def clean_row(raw):
     gender=str(column(r,"الجنس","النوع","gender","sexe")).strip()
     guardian_name=str(column(r,"اسم ولي الأمر","اسم الوصي","ولي الأمر","guardian_name")).strip()
     guardian_phone=str(column(r,"هاتف ولي الأمر","هاتف الوصي","guardian phone","guardian_phone")).strip()
-    record=dict(full_name=full_name,gender=gender,born_on=born_on.isoformat() if born_on else None,
+    source_code=str(column(r,"الرمز","رمز المستفيد","رمز التلميذ","code eleve","code élève","code")).strip()
+    record=dict(full_name=full_name,source_code=source_code,gender=gender,born_on=born_on.isoformat() if born_on else None,
        birthplace=place,phone=str(column(r,"الهاتف","هاتف المستفيد","phone")).strip(),
        address=str(column(r,"العنوان","address")).strip(),
        guardian_name=guardian_name,guardian_relationship=str(column(r,"صلة القرابة","الصفة","guardian_relationship")).strip(),
        guardian_phone=guardian_phone)
     if len(full_name)<3 or len(full_name)>180:raise ValueError("الاسم الكامل غير صالح")
+    if len(source_code)>60 or source_code[:1] in ("=","+","-","@"):raise ValueError("رمز المستفيد غير صالح")
     if full_name[:1] in ("=","+","-","@"):raise ValueError("صيغة غير مسموح بها في الاسم")
     if gender not in ("","ذكر","أنثى","M","F","m","f"):raise ValueError("الجنس غير معروف")
     if born_on and born_on>date.today():raise ValueError("تاريخ الميلاد في المستقبل")
@@ -91,18 +108,36 @@ def parse_upload(filename, data):
     if suffix==".xlsx":
         try:
             wb=load_workbook(io.BytesIO(data),read_only=True,data_only=True)
-            ws=wb.active
-            it=ws.iter_rows(values_only=True)
-            header=[str(x or "").strip() for x in next(it)]
-            rows=({header[i]:v for i,v in enumerate(values) if i<len(header)} for values in it)
-            output=[]
-            for idx,record in enumerate(rows,start=2):
-                if idx>MAX_ROWS+1:raise HTTPException(413,"الملف يحتوي أكثر من 1500 صف")
-                if any(v is not None and str(v).strip() for v in record.values()):output.append((idx,record))
-            wb.close()
-            return output
-        except HTTPException:raise
-        except Exception as exc:raise HTTPException(422,"ملف Excel غير صالح أو تالف") from exc
+            try:
+                ws=wb.active
+                it=ws.iter_rows(values_only=True)
+                header=None
+                heading_row=None
+                # Original school exports often have a title, school details,
+                # and merged cells above the real column headings.
+                for row_num,values in enumerate(it,start=1):
+                    if row_num>50:
+                        break
+                    if looks_like_header(values):
+                        header=[str(x or "").strip() for x in values]
+                        heading_row=row_num
+                        break
+                if header is None:
+                    raise HTTPException(422,"لم نجد سطر عناوين المستفيدين في أول 50 سطرًا من الملف.")
+                output=[]
+                for idx,values in enumerate(it,start=heading_row+1):
+                    if idx>heading_row+MAX_ROWS:
+                        raise HTTPException(413,"الملف يحتوي أكثر من 1500 صف")
+                    record={header[i]:v for i,v in enumerate(values) if i<len(header)}
+                    if any(v is not None and str(v).strip() for v in record.values()):
+                        output.append((idx,record))
+                return output
+            finally:
+                wb.close()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(422,"ملف Excel غير صالح أو تالف") from exc
     try:
         try:text=data.decode("utf-8-sig")
         except UnicodeDecodeError:text=data.decode("cp1256")
@@ -119,6 +154,11 @@ def parse_upload(filename, data):
 def duplicates(db:Session,record,year_id):
     existing=db.scalars(select(Learner).where(Learner.full_name==record["full_name"],
               Learner.born_on==date.fromisoformat(record["born_on"]) if record["born_on"] else Learner.born_on.is_(None))).all()
+    if record.get("source_code"):
+        previous=db.scalar(select(Learner).where(Learner.source_code==record["source_code"]).limit(1))
+        if previous and (normalize(previous.full_name)!=normalize(record["full_name"]) or
+           (previous.born_on.isoformat() if previous.born_on else None)!=record["born_on"]):
+            return "رمز المستفيد موجود في ملف آخر؛ يرجى تدقيق البيانات"
     if len(existing)>1:return "اسم وتاريخ ميلاد متطابقان في أكثر من ملف؛ يلزم التدقيق"
     if len(existing)==1:
         enrolled=db.scalar(select(Enrollment).where(Enrollment.learner_id==existing[0].id,Enrollment.year_id==year_id))
@@ -166,8 +206,8 @@ async def import_preview(request:Request,token:str=Form(alias="_csrf"),track_id:
     pending_guardian = sum(1 for r in valid if r["born_on"] and
         (date.today() - date.fromisoformat(r["born_on"])).days < 18*365
         and not r["guardian_phone"])
-    preview=table(["الاسم","تاريخ الازدياد","النوع","إكمال الملف"],[
-        [e(r["full_name"]),e(r["born_on"] or "—"),e(r["gender"]),
+    preview=table(["الاسم","الرمز الأصلي","تاريخ الازدياد","النوع","إكمال الملف"],[
+        [e(r["full_name"]),e(r["source_code"] or "—"),e(r["born_on"] or "—"),e(r["gender"]),
          "هاتف ولي الأمر: يُستكمل لاحقًا" if r["born_on"] and
          (date.today() - date.fromisoformat(r["born_on"])).days < 18*365
          and not r["guardian_phone"] else "—"] for r in valid[:60]])
@@ -200,7 +240,10 @@ def import_commit(request:Request,token:str=Form(alias="_csrf"),payload:str=Form
             if issue:raise ValueError(issue)
             birth=date.fromisoformat(record["born_on"]) if record["born_on"] else None
             match=db.scalar(select(Learner).where(Learner.full_name==record["full_name"],Learner.born_on==birth))
-            if match:learner=match
+            if match:
+                learner=match
+                if record["source_code"] and not match.source_code:
+                    match.source_code=record["source_code"]
             else:
                 learner=Learner(**{**record,"born_on":birth})
                 db.add(learner);db.flush()
