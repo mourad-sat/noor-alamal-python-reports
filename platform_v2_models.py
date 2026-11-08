@@ -80,6 +80,7 @@ class Learner(Base):
     __tablename__ = "v2_learners"
     id: Mapped[int] = mapped_column(primary_key=True)
     full_name: Mapped[str] = mapped_column(String(180))
+    source_code: Mapped[str] = mapped_column(String(60), default="")
     gender: Mapped[str] = mapped_column(String(20), default="")
     born_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     birthplace: Mapped[str] = mapped_column(String(120), default="")
