@@ -767,23 +767,22 @@ def learners_page(request: Request, track_id: int | None = None,
     ]
     if track_id is None:
         sections = [
-            '<section><h2>اختيار المركز والمسلك</h2>'
+            '<section class="pv2-roster-intro"><h2>اختيار المركز والمسلك</h2>'
             '<p class="subtle">لن تظهر أسماء المستفيدين حتى تدخل إلى المسلك الذي تريده. '
             'اختر المركز ثم اضغط على اسم المسلك لعرض لائحته فقط.</p></section>'
         ]
         for center_id, center_name in center_options(db, user):
             center_tracks = [track for track in visible_tracks if track.center_id == center_id]
             buttons = "".join(
-                '<a class="button" style="display:inline-flex;align-items:center;'
-                'margin:6px 0 6px 12px;gap:6px" '
+                '<a class="pv2-track-link" '
                 f'href="/platform/learners?track_id={track.id}">'
                 f'{e(track.name)} <small>({e(db.get(Year,track.year_id).label)})</small></a>'
                 for track in center_tracks
             )
             sections.append(
-                f'<section><h2>{e(center_name)}</h2>'
+                f'<section class="pv2-track-section"><h2>{e(center_name)}</h2><div class="pv2-track-grid">'
                 + (buttons or '<p class="subtle">لم تُضف مسالك متاحة لهذا المركز بعد.</p>')
-                + '</section>'
+                + '</div></section>'
             )
         return page(request, user, "المستفيدون حسب المركز والمسلك", "".join(sections))
 
@@ -816,12 +815,12 @@ def learners_page(request: Request, track_id: int | None = None,
             details += f' · <a href="/platform/learners/{en.id}/card">طباعة البطاقة</a>'
         rows.append([e(learner.full_name), e(learner.source_code) or "—", status, details])
     title = f'{center.name} · {selected.name} · {year.label}'
-    body = (f'<section><h2>{e(title)}</h2>'
+    body = (f'<section class="pv2-roster-intro"><h2>{e(title)}</h2>'
             f'<p class="subtle">عدد المستفيدين في هذا المسلك: {len(rows)}'
             ' · اللائحة مقتصرة على هذا المسلك فقط.</p>'
             '<a class="button" href="/platform/learners">العودة إلى اختيار المسالك</a>'
             '</section>')
-    body += '<section><h2>لائحة المستفيدين</h2>' + table(
+    body += '<section class="pv2-roster-list"><h2>لائحة المستفيدين</h2>' + table(
         ["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows
     ) + '</section>'
     if user["role"] in ("admin", "coordinator") and not year.archived:
@@ -839,9 +838,10 @@ def learners_page(request: Request, track_id: int | None = None,
             f'<input type="hidden" name="year_id" value="{year.id}">' +
             f'<input type="hidden" name="track_id" value="{selected.id}">'
         )
-        body += ('<section><h2>تسجيل مستفيد جديد في هذا المسلك</h2>'
+        body += ('<section class="pv2-roster-register"><details><summary>تسجيل مستفيد جديد في هذا المسلك</summary>'
+                 '<p class="subtle">يمكن إدخال المعلومات المتوفرة الآن، واستكمال الحقول الأخرى لاحقاً.</p>'
                  + form("/platform/learners", csrf, registration_fields, "تسجيل المستفيد")
-                 + '</section>')
+                 + '</details></section>')
     return page(request, user, "لائحة مستفيدي المسلك", body)
 
 
