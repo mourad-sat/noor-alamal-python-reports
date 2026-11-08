@@ -13,6 +13,16 @@ def test_admin_erasure_cleans_personal_relations_and_invalidates_public_qr(clien
        guardian_name="ولي خصوصية",guardian_relationship="الأب",
        guardian_phone="0600000066",year_id=1,track_id=1)
     assert learner.status_code==303
+    # Uploaded personal portraits must disappear on authorized GDPR/CNDP erasure.
+    from io import BytesIO
+    from PIL import Image
+    image=BytesIO()
+    Image.new("RGB",(200,260),(180,140,100)).save(image,format="PNG")
+    uploaded_photo=client.post("/platform/learners/1/photo",
+        data={"_csrf":admin},
+        files={"photo":("learner.png",image.getvalue(),"image/png")})
+    assert uploaded_photo.status_code==303
+    assert client.get("/platform/learners/1/photo/file").status_code==200
     forbidden_reason=post(client,"/platform/privacy/erase",admin,learner_id=1,
        category="data_subject",reason="طلب قانوني موثق لحذف البيانات",confirmation="لا")
     assert forbidden_reason.status_code==422
@@ -67,11 +77,11 @@ def test_admin_erasure_cleans_personal_relations_and_invalidates_public_qr(clien
     from sqlalchemy.orm import Session
     from app import engine
     from platform_v2_models import (
-        Learner, Enrollment, Grade, GradeCorrection, Attendance, Permit, Notice,
+        Learner, LearnerPhoto, Enrollment, Grade, GradeCorrection, Attendance, Permit, Notice,
         DocumentProof, Attachment, AttachmentBlob, ErasureAggregate, Audit,
     )
     with Session(engine) as db:
-        for model in (Learner, Enrollment, Grade, GradeCorrection, Attendance,
+        for model in (Learner, LearnerPhoto, Enrollment, Grade, GradeCorrection, Attendance,
                       Permit, Notice, DocumentProof, Attachment, AttachmentBlob):
             assert db.query(model).count()==0,model.__name__
         counter=db.get(ErasureAggregate,1)

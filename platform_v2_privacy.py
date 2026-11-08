@@ -22,7 +22,7 @@ from platform_v2 import actor, assert_csrf, e, form, field, choose, area, page, 
 from platform_v2_models import (
     Assessment, Attachment, AttachmentBlob, Attendance, AttendanceCorrection, Audit, CenterReport,
     Discipline, DocumentProof, Enrollment, ErasureAggregate, Grade,
-    GradeCorrection, Incident, Learner, Notice, Notification, Permit,
+    GradeCorrection, Incident, Learner, LearnerPhoto, Notice, Notification, Permit,
     SessionDay, SessionReport, SessionReportProof, Slot,
 )
 
@@ -128,7 +128,7 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
         "grade":grade_ids,"attendance":attendance_ids,"enrollment":en_ids,
         "incident":[x.id for x in incidents],"notice":[x.id for x in notices],
         "discipline":[x.id for x in discipline],"permit":[x.id for x in permits],
-        "learner":[learner.id],
+        "learner":[learner.id],"learner_photo":[learner.id],
     }
     for resource,ids in id_references.items():
         if ids:
@@ -164,6 +164,10 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
             db.execute(delete(model).where(model.id.in_(ids)))
     if en_ids:
         db.execute(delete(Enrollment).where(Enrollment.id.in_(en_ids)))
+    # A private portrait is owned by this learner; remove it with the record.
+    photo=db.get(LearnerPhoto,learner.id)
+    if photo:
+        db.delete(photo)
     db.delete(learner)
 
     # No PII, IDs or free-form reason are retained in the deletion receipt.
