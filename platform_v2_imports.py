@@ -80,8 +80,7 @@ def clean_row(raw):
     if full_name[:1] in ("=","+","-","@"):raise ValueError("صيغة غير مسموح بها في الاسم")
     if gender not in ("","ذكر","أنثى","M","F","m","f"):raise ValueError("الجنس غير معروف")
     if born_on and born_on>date.today():raise ValueError("تاريخ الميلاد في المستقبل")
-    if born_on and (date.today()-born_on).days<18*365 and not guardian_phone:
-        raise ValueError("هاتف ولي الأمر إلزامي للقاصر")
+    # Optional guardian contact remains blank until completed from learner record.
     if any(len(str(v or ""))>240 for v in record.values()):raise ValueError("حقل أطول من الحجم المسموح")
     return record
 
@@ -138,7 +137,7 @@ def import_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
         <input type="hidden" name="_csrf" value="{e(request.session["csrf"])}">{options}
         <label>ملف المستفيدين (.xlsx أو .csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
         <button type="submit">معاينة البيانات والأخطاء</button></form>'''
-    body='<section><h2>استيراد دفعي مع معاينة قبل التسجيل</h2><p>يمكن استعمال عمود «الاسم الكامل»، أو عمودي «الاسم» و«النسب»، و«تاريخ الازدياد» و«هاتف ولي الأمر» للقاصرين.</p>'+formhtml+'</section>'
+    body='<section><h2>استيراد دفعي مع معاينة قبل التسجيل</h2><p>يمكن استعمال عمود «الاسم الكامل»، أو عمودي «الاسم» و«النسب»، و«تاريخ الازدياد». تُقبل البيانات الناقصة مؤقتًا، ويمكن استكمال هاتف ولي الأمر من ملف المستفيد لاحقًا.</p>'+formhtml+'</section>'
     return page(request,user,"استيراد Excel وCSV",body)
 
 @app.post("/platform/import/preview",response_class=HTMLResponse)
@@ -164,14 +163,21 @@ async def import_preview(request:Request,token:str=Form(alias="_csrf"),track_id:
     payload=json.dumps({"track_id":track_id,"rows":valid},ensure_ascii=False,separators=(",",":"))
     if len(payload)>600000:raise HTTPException(413,"عدد البيانات أكبر من الحد الآمن للمعاينة")
     signature=token_for(payload)
-    preview=table(["الاسم","تاريخ الازدياد","النوع"],[[e(r["full_name"]),e(r["born_on"] or "—"),e(r["gender"])] for r in valid[:60]])
+    pending_guardian = sum(1 for r in valid if r["born_on"] and
+        (date.today() - date.fromisoformat(r["born_on"])).days < 18*365
+        and not r["guardian_phone"])
+    preview=table(["الاسم","تاريخ الازدياد","النوع","إكمال الملف"],[
+        [e(r["full_name"]),e(r["born_on"] or "—"),e(r["gender"]),
+         "هاتف ولي الأمر: يُستكمل لاحقًا" if r["born_on"] and
+         (date.today() - date.fromisoformat(r["born_on"])).days < 18*365
+         and not r["guardian_phone"] else "—"] for r in valid[:60]])
     errors=table(["رقم السطر","الخطأ"],[[e(n),e(err)] for n,err in invalid[:200]])
     reject_csv=io.StringIO();writer=csv.writer(reject_csv);writer.writerow(["رقم السطر","سبب الرفض"]);writer.writerows(invalid)
     encoded=quote("\ufeff"+reject_csv.getvalue())
     commit=form("/platform/import/commit",request.session["csrf"],
          f'<input type="hidden" name="payload" value="{e(payload)}"><input type="hidden" name="signature" value="{signature}">',
          f"استيراد {len(valid)} صفًا صالحًا") if valid else "<p>لا توجد صفوف صالحة.</p>"
-    return page(request,user,"معاينة الاستيراد",f'<section><p>صفوف صالحة: {len(valid)} · مرفوضة: {len(invalid)}</p>{preview}{commit}</section><section><h2>أخطاء الاستيراد</h2>{errors}<a class="button" download="import-errors.csv" href="data:text/csv;charset=utf-8,{encoded}">تنزيل ملف الأخطاء CSV</a></section>')
+    return page(request,user,"معاينة الاستيراد",f'<section><p>صفوف صالحة: {len(valid)} · مرفوضة: {len(invalid)} · هواتف أولياء أمور القاصرين غير المكتملة: {pending_guardian}</p>{preview}{commit}</section><section><h2>أخطاء الاستيراد</h2>{errors}<a class="button" download="import-errors.csv" href="data:text/csv;charset=utf-8,{encoded}">تنزيل ملف الأخطاء CSV</a></section>')
 
 @app.post("/platform/import/commit",response_class=HTMLResponse)
 def import_commit(request:Request,token:str=Form(alias="_csrf"),payload:str=Form(),signature:str=Form(),
