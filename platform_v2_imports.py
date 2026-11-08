@@ -86,7 +86,7 @@ def clean_row(raw):
     gender=str(column(r,"الجنس","النوع","gender","sexe")).strip()
     guardian_name=str(column(r,"اسم ولي الأمر","اسم الوصي","ولي الأمر","guardian_name")).strip()
     guardian_phone=str(column(r,"هاتف ولي الأمر","هاتف الوصي","guardian phone","guardian_phone")).strip()
-    source_code=str(column(r,"الرمز","رمز المستفيد","رمز التلميذ","code eleve","code élève","code")).strip()
+    source_code=str(column(r,"الرمز","رمز المستفيد","رمز التلميذ","code eleve","code élève","code","source_code")).strip()
     record=dict(full_name=full_name,source_code=source_code,gender=gender,born_on=born_on.isoformat() if born_on else None,
        birthplace=place,phone=str(column(r,"الهاتف","هاتف المستفيد","phone")).strip(),
        address=str(column(r,"العنوان","address")).strip(),
