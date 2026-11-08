@@ -91,6 +91,15 @@ class Learner(Base):
     guardian_phone: Mapped[str] = mapped_column(String(45), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+class LearnerPhoto(Base):
+    """Private, sanitized learner portrait; never exposed in public pages."""
+    __tablename__ = "v2_learner_photos"
+    learner_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_learners")), primary_key=True)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+
 class Enrollment(Base):
     __tablename__ = "v2_enrollments"
     id: Mapped[int] = mapped_column(primary_key=True)
