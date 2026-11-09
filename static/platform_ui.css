@@ -176,3 +176,35 @@
 .pv2 .pv2-report-section{break-inside:auto}
 .pv2 .pv2-report-section h2{break-after:avoid}
 }
+
+/* Session report editing: clear steps, helpful hints, and accessible controls. */
+.pv2 .pv2-session-report-editor{border-top:4px solid #0b967c;padding:clamp(18px,2.6vw,30px)}
+.pv2-report-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.pv2-report-editor-head h2{font-size:clamp(19px,2vw,23px);margin:2px 0 6px}
+.pv2-report-editor-head p{margin:0;color:#526f80}
+.pv2 .pv2-report-eyebrow{font-size:12px;font-weight:700;color:#087c66;margin:0}
+.pv2-report-editor-state{display:inline-block;padding:6px 12px;border-radius:20px;background:#e5f5ef;color:#0a725c;font-size:12px;font-weight:700}
+.pv2-report-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0;margin:16px 0 26px;list-style:none;counter-reset:steps}
+.pv2-report-steps li{position:relative;padding:15px 51px 15px 15px;border:1px solid #dce9ee;background:#f8fbfc;border-radius:12px;counter-increment:steps}
+.pv2-report-steps li:before{content:counter(steps);position:absolute;right:14px;top:14px;background:#dfefe9;color:#0b7963;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;font-weight:700}
+.pv2-report-steps strong{display:block;color:#18485f;font-size:13px}
+.pv2-report-steps span{display:block;font-size:11px;color:#5c7788}
+.pv2-report-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.pv2 .pv2-report-field{display:flex;flex-direction:column;min-width:0;gap:6px;font-weight:700;color:#204e65;font-size:13px}
+.pv2 .pv2-report-field--wide{grid-column:1/-1}
+.pv2-report-field em{font-style:normal;color:#ae3445;font-size:11px}
+.pv2-report-field small{font-weight:400;color:#617d8c;font-size:11px}
+.pv2 .pv2-report-field textarea{resize:vertical;min-height:112px}
+.pv2 .pv2-report-field input,.pv2 .pv2-report-field textarea{border-radius:10px;border-color:#bdcfd9;background:#fff}
+.pv2-report-save-actions{display:flex;align-items:center;gap:15px;flex-wrap:wrap;padding-top:20px;margin-top:20px;border-top:1px solid #e3ebef}
+.pv2-report-save-actions span{color:#5b7485;font-size:12px}
+.pv2-report-submit{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-top:22px;padding:17px 19px;border:1px solid #c5e5d9;background:#f0faf6;border-radius:12px}
+.pv2-report-submit strong{display:block;color:#116951;font-size:14px}
+.pv2-report-submit p{font-size:12px;margin:3px 0 0;color:#537768}
+.pv2-report-submit form{margin:0}
+.pv2 .pv2-report-submit button{background:#087c62}
+.pv2-report-hint{margin:20px 0 0;padding:13px;border-radius:10px;background:#eff6fa;color:#355a71;font-size:12px}
+.pv2-session-report-return{border:1px solid #ebd3a6;background:#fff9eb;padding:14px 17px;border-radius:10px;color:#81571a}
+.pv2-session-report-return p{color:#81571a;margin:4px 0 0}
+@media(max-width:750px){.pv2-report-editor-grid,.pv2-report-steps{grid-template-columns:minmax(0,1fr)}}
+@media print{.pv2-session-report-editor{display:none!important}}

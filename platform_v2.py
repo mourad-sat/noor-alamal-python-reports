@@ -1145,6 +1145,73 @@ def open_session(request:Request,token:str=Form(alias="_csrf"),slot_id:int=Form(
         db.add(item);db.flush();log(db,user,"open_session","session",item.id);db.commit()
     return redirect(f"/platform/sessions/{item.id}")
 
+def session_report_editor(session_id: int, csrf: str, report, default_subject: str) -> str:
+    """Accessible, prefilled editor; saving and submitting remain separate POST actions."""
+    def report_textarea(name: str, label: str, hint: str, rows: int = 4) -> str:
+        value = e(getattr(report, name, "") if report else "")
+        return (
+            f'<label class="pv2-report-field" for="session-report-{name}">'
+            f'<span>{e(label)}</span><small>{e(hint)}</small>'
+            f'<textarea id="session-report-{name}" name="{name}" rows="{rows}" '
+            f'maxlength="10000">{value}</textarea></label>'
+        )
+    subject = e(report.subject if report else default_subject)
+    is_returned = bool(report and report.status == "returned")
+    notice = (
+        '<div class="pv2-session-report-return" role="status">'
+        '<strong>أعيد التقرير للتصحيح</strong>'
+        f'<p>{e(report.review_comment) if report.review_comment else "راجع محتوى التقرير ثم احفظه قبل إرساله مجدداً."}</p>'
+        '</div>'
+    ) if is_returned else ""
+    guide = (
+        '<ol class="pv2-report-steps">'
+        '<li><strong>تعمير التقرير</strong><span>وثّق الأهداف والأنشطة والنتائج.</span></li>'
+        '<li><strong>حفظ المسودة</strong><span>يمكنك الرجوع إليها وتعديلها لاحقاً.</span></li>'
+        '<li><strong>إرسال للمراجعة</strong><span>بعد الحفظ، أرسل التقرير إلى المنسق.</span></li>'
+        '</ol>'
+    )
+    fields = (
+        '<div class="pv2-report-editor-grid">'
+        '<label class="pv2-report-field pv2-report-field--wide" for="session-report-subject">'
+        '<span>عنوان التقرير <em>إلزامي</em></span>'
+        '<small>عنوان واضح يختصر موضوع الحصة.</small>'
+        f'<input id="session-report-subject" name="subject" type="text" '
+        f'value="{subject}" maxlength="200" required></label>'
+        + report_textarea("objectives", "الأهداف", "ما الذي أردتم تحقيقه خلال الحصة؟")
+        + report_textarea("activities", "الأنشطة المنجزة", "ما الأنشطة والخطوات التي أُنجزت فعلياً؟", 5)
+        + report_textarea("results", "النتائج والمهارات المكتسبة", "ما الذي تعلمه أو أنجزه المستفيدون؟", 5)
+        + report_textarea("challenges", "الصعوبات", "اذكر الصعوبات إن وُجدت، أو اترك الحقل فارغاً.")
+        + report_textarea("recommendations", "التوصيات", "ما التحسينات أو الإجراءات المقترحة للحصة المقبلة؟")
+        + '</div>'
+    )
+    save = (
+        '<form class="pv2-session-report-form" method="post" '
+        f'action="/platform/sessions/{session_id}/report">'
+        + post_fields(csrf) + fields
+        + '<div class="pv2-report-save-actions"><button type="submit">حفظ مسودة التقرير</button>'
+        '<span>الحفظ لا يرسل التقرير للمصادقة.</span></div></form>'
+    )
+    submit = (
+        '<div class="pv2-report-submit">'
+        '<div><strong>الخطوة التالية: المراجعة</strong>'
+        '<p>بعد التأكد من حفظ التغييرات، يمكنك إرسال التقرير إلى المنسق للمصادقة.</p></div>'
+        + form(f"/platform/reports/{report.id}/submit", csrf, "", "إرسال للمراجعة")
+        + '</div>'
+    ) if report else (
+        '<p class="pv2-report-hint">احفظ المسودة أولاً حتى يظهر زر إرسال التقرير للمراجعة.</p>'
+    )
+    return (
+        '<section class="pv2-session-report-editor" aria-labelledby="session-report-title">'
+        '<div class="pv2-report-editor-head"><div>'
+        '<p class="pv2-report-eyebrow">تقرير الحصة</p>'
+        '<h2 id="session-report-title">توثيق الحصة ومتابعة المصادقة</h2>'
+        '<p>اكتب المعلومات تدريجياً، واحفظ المسودة قبل إرسالها للمراجعة.</p>'
+        '</div><span class="pv2-report-editor-state">'
+        + ("أعيد للتصحيح" if is_returned else "مسودة قابلة للتعديل")
+        + '</span></div>' + notice + guide + save + submit + '</section>'
+    )
+
+
 @app.get("/platform/sessions/{session_id}",response_class=HTMLResponse)
 def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     s=db.get(SessionDay,session_id)
@@ -1180,11 +1247,7 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
            e(old.status if old else "لم يسجل"),action])
     body=f'<section><h2>{e(slot.subject)} · {e(s.held_on)}</h2><p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>{table(["المستفيد","التنبيه","الحضور","الإجراء"],rows)}</section>'
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
-        body+='<section><h2>تقرير الحصة الواحدة</h2>'+form(f"/platform/sessions/{s.id}/report",request.session["csrf"],
-            field("subject","عنوان التقرير",value=report.subject if report else slot.subject)+
-            area("objectives","الأهداف")+area("activities","الأنشطة")+area("results","النتائج والمهارات المكتسبة")+
-            area("challenges","الصعوبات")+area("recommendations","التوصيات"),"حفظ مسودة التقرير")+'</section>'
-        if report:body+=f'<section>{form(f"/platform/reports/{report.id}/submit",request.session["csrf"],"","إرسال للمراجعة")}</section>'
+        body += session_report_editor(s.id, request.session["csrf"], report, slot.subject)
     if report:
         body+=f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p><p>{e(report.review_comment)}</p><p><a class="button" href="/platform/reports/{report.id}/attachments">مرفقات التقرير</a></p></section>'
     return page(request,user,"تدبير الحصة",body)
