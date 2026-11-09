@@ -1212,6 +1212,64 @@ def session_report_editor(session_id: int, csrf: str, report, default_subject: s
     )
 
 
+def attendance_choice_form(session_id: int, enrollment_id: int, csrf: str,
+                           current_status: str | None, pending_absence: bool) -> str:
+    """Explicit one-person attendance action; keeps the original secured POST route."""
+    choices = (("present", "حاضر"), ("absent", "غائب"), ("late", "متأخر"))
+    radios = []
+    for value, label in choices:
+        checked = ' checked' if current_status == value else ""
+        # A prior unresolved absence blocks another present/late mark server-side.
+        disabled = ' disabled' if pending_absence and value != "absent" else ""
+        radios.append(
+            '<label class="pv2-attendance-option">'
+            f'<input type="radio" name="status" value="{value}" required{checked}{disabled}>'
+            f'<span>{label}</span></label>'
+        )
+    hint = (
+        '<p class="pv2-attendance-hint danger">يوجد غياب معلّق؛ '
+        'يلزم إذن المنسق قبل تسجيل الحضور أو التأخر.</p>'
+    ) if pending_absence else ""
+    return (
+        f'<form class="pv2-attendance-form" method="post" '
+        f'action="/platform/sessions/{session_id}/attendance">'
+        + post_fields(csrf)
+        + f'<input type="hidden" name="enrollment_id" value="{enrollment_id}">'
+        + '<fieldset class="pv2-attendance-options"><legend>تحديد الحضور</legend>'
+        + "".join(radios) + '</fieldset>' + hint
+        + '<button type="submit">حفظ الحالة</button></form>'
+    )
+
+
+def attendance_summary(enrollments, marks: dict) -> str:
+    """Show only this session's enrollment counts; do not imply absent for unmarked."""
+    counts = {"present": 0, "absent": 0, "late": 0, "unmarked": 0}
+    for enrollment in enrollments:
+        mark = marks.get(enrollment.id)
+        status = mark.status if mark else ""
+        if status in ("present", "absent", "late"):
+            counts[status] += 1
+        else:
+            counts["unmarked"] += 1
+    labels = (
+        ("present", "حاضر"), ("absent", "غائب"),
+        ("late", "متأخر"), ("unmarked", "لم يُسجّل بعد")
+    )
+    cards = "".join(
+        f'<div class="pv2-attendance-stat pv2-attendance-stat--{key}">'
+        f'<span>{label}</span><strong>{counts[key]}</strong></div>'
+        for key, label in labels
+    )
+    return (
+        '<div class="pv2-attendance-overview" aria-label="ملخص حضور الحصة">'
+        '<div class="pv2-section-head"><h2>ملخص الحضور</h2>'
+        f'<span>عدد المسجلين في الحصة: {len(enrollments)}</span></div>'
+        + f'<div class="pv2-attendance-stats">{cards}</div>'
+        '<p class="subtle">الأعداد مبنية على سجلات هذه الحصة فقط. '
+        'الذين لم يُسجل حضورهم ليسوا غائبين تلقائياً.</p></div>'
+    )
+
+
 @app.get("/platform/sessions/{session_id}",response_class=HTMLResponse)
 def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     s=db.get(SessionDay,session_id)
@@ -1238,14 +1296,17 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
                             [("present","حاضر"),("absent","غائب"),("late","متأخر")],
                             selected=old.status)+area("reason","سبب التصحيح المعلل"),"طلب تصحيح")
             else:
-                action=form(f"/platform/sessions/{s.id}/attendance",request.session["csrf"],
-                    f'<input type="hidden" name="enrollment_id" value="{en.id}">'+
-                    choose("status","الحضور",[("present","حاضر"),("absent","غائب"),("late","متأخر")],
-                           old.status if old else None),
-                    "تسجيل")
+                action=attendance_choice_form(
+                    s.id, en.id, request.session["csrf"],
+                    old.status if old else None, bool(pend)
+                )
         rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',state,
            e(old.status if old else "لم يسجل"),action])
-    body=f'<section><h2>{e(slot.subject)} · {e(s.held_on)}</h2><p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>{table(["المستفيد","التنبيه","الحضور","الإجراء"],rows)}</section>'
+    summary = attendance_summary(enrollments, marks)
+    body=(f'<section class="pv2-attendance-session"><h2>{e(slot.subject)} · {e(s.held_on)}</h2>'
+          f'<p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>'
+          f'{summary}<h2>تسجيل حضور المستفيدين</h2>'
+          f'{table(["المستفيد","التنبيه","الحضور الحالي","الإجراء"],rows)}</section>')
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
         body += session_report_editor(s.id, request.session["csrf"], report, slot.subject)
     if report:
