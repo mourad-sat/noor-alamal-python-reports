@@ -1431,54 +1431,165 @@ def submit_report(report_id:int,request:Request,token:str=Form(alias="_csrf"),db
     notify(db,slot.center_id,"تقرير حصة ينتظر المراجعة",f"/platform/reports")
     db.commit();return redirect("/platform/reports")
 
-@app.get("/platform/reports",response_class=HTMLResponse)
-def review_reports(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
-    csrf=request.session["csrf"]
-    reports=db.scalars(select(SessionReport).order_by(SessionReport.id.desc()).limit(600)).all()
-    rows=[]
-    for r in reports:
-        s=db.get(SessionDay,r.session_id);slot=db.get(Slot,s.slot_id)
-        if not center_allowed(user,slot.center_id):continue
-        if user["role"] in ("instructor","educator") and r.author_id!=user["id"]:continue
-        approve=""
-        if user["role"]=="coordinator" and r.status=="submitted":
-            approve=form(f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="approved">',"مصادقة") + form(
-                f"/platform/reports/{r.id}/review",csrf,'<input type="hidden" name="decision" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع للتصحيح")
-        approve+=f' <a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
-        if r.status=="approved":
-            approve+=form(f"/platform/reports/{r.id}/print",csrf,"","تقرير رسمي مع رمز تحقق")
-        if user["role"]=="admin":
-            approve+=form(f"/platform/reports/{r.id}/erase",csrf,
-                area("reason","السبب المكتوب للحذف النهائي")+
-                field("confirmation","اكتب: حذف التقرير"),
-                "حذف التقرير نهائيًا")
-        rows.append([e(s.held_on),e(slot.subject),e(r.subject),e(STATUS_LABELS.get(r.status,r.status)),
-                     e(r.review_comment),approve])
-    body='<section><h2>تقارير الحصص المنفصلة</h2>'+table(["التاريخ","المادة","عنوان التقرير","الحالة","ملاحظة المنسق","المراجعة"],rows)+'</section>'
-    if user["role"] in ("admin","coordinator"):
-        summaries=db.scalars(select(CenterReport).order_by(CenterReport.id.desc()).limit(200)).all()
-        summaryrows=[]
+def report_status_summary(rows: list) -> str:
+    """Counts correspond only to the reports already authorized and loaded."""
+    labels = (
+        ("submitted", "تنتظر المراجعة"),
+        ("returned", "أُعيدت للتصحيح"),
+        ("approved", "تمت المصادقة"),
+        ("draft", "مسودات"),
+    )
+    counts = {key: 0 for key, _ in labels}
+    for report in rows:
+        if report.status in counts:
+            counts[report.status] += 1
+    cards = "".join(
+        f'<div class="pv2-review-stat pv2-review-stat--{key}">'
+        f'<span>{label}</span><strong>{counts[key]}</strong></div>'
+        for key, label in labels
+    )
+    return (
+        '<section class="pv2-review-overview"><div class="pv2-section-head">'
+        '<h2>متابعة التقارير</h2><span>إحصائيات التقارير المعروضة وفق صلاحياتك</span>'
+        '</div><div class="pv2-review-stats">' + cards + '</div>'
+        '<p class="subtle">الأعداد مبنية على أحدث التقارير المحمّلة فقط، '
+        'وقد لا تشمل جميع التقارير التاريخية.</p></section>'
+    )
+
+
+def report_filter_box(target: str, label: str) -> str:
+    """Client-only filtering of already-authorized table rows."""
+    return (
+        '<div class="pv2-review-filter no-print">'
+        f'<label for="filter-{target}">{e(label)}</label>'
+        f'<input id="filter-{target}" type="search" data-table-filter="{target}" '
+        'autocomplete="off" placeholder="اكتب كلمة للبحث في اللائحة...">'
+        f'<span data-table-counter="{target}" role="status" aria-live="polite"></span>'
+        '</div>'
+    )
+
+
+@app.get("/platform/reports", response_class=HTMLResponse)
+def review_reports(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
+    csrf = request.session["csrf"]
+    recent = db.scalars(select(SessionReport).order_by(SessionReport.id.desc()).limit(600)).all()
+    visible = []
+    rows = []
+    for r in recent:
+        session = db.get(SessionDay, r.session_id)
+        slot = db.get(Slot, session.slot_id)
+        if not center_allowed(user, slot.center_id):
+            continue
+        if user["role"] in ("instructor", "educator") and r.author_id != user["id"]:
+            continue
+        visible.append(r)
+        actions = []
+        if user["role"] == "coordinator" and r.status == "submitted":
+            actions.append(
+                form(f"/platform/reports/{r.id}/review", csrf,
+                     '<input type="hidden" name="decision" value="approved">', "مصادقة")
+            )
+            actions.append(
+                '<details class="pv2-review-disclosure"><summary>إرجاع للتصحيح</summary>'
+                + form(f"/platform/reports/{r.id}/review", csrf,
+                       '<input type="hidden" name="decision" value="returned">'
+                       + '<label>سبب الإرجاع'
+                       '<textarea name="comment" required minlength="5" rows="3"></textarea></label>',
+                       "تأكيد الإرجاع") + '</details>'
+            )
+        actions.append(
+            f'<a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
+        )
+        if r.status == "approved":
+            actions.append(
+                form(f"/platform/reports/{r.id}/print", csrf, "",
+                     "تقرير رسمي مع رمز تحقق")
+            )
+        if user["role"] == "admin":
+            actions.append(
+                '<details class="pv2-review-disclosure pv2-review-danger">'
+                '<summary>خيارات حذف التقرير</summary>'
+                + form(f"/platform/reports/{r.id}/erase", csrf,
+                       area("reason", "السبب المكتوب للحذف النهائي") +
+                       field("confirmation", "اكتب: حذف التقرير"),
+                       "حذف التقرير نهائيًا")
+                + '</details>'
+            )
+        status_key = r.status if r.status in ("submitted", "approved", "returned", "draft") else "other"
+        status = (
+            f'<span class="pv2-status pv2-status--{status_key}">'
+            f'{e(STATUS_LABELS.get(r.status, r.status))}</span>'
+        )
+        rows.append([
+            e(session.held_on), e(slot.subject), e(r.subject), status,
+            e(r.review_comment) or "—",
+            '<div class="pv2-review-actions">' + "".join(actions) + '</div>',
+        ])
+    body = report_status_summary(visible)
+    body += (
+        '<section class="pv2-review-list"><div class="pv2-section-head">'
+        '<h2>تقارير الحصص</h2><span>الاطلاع والمراجعة حسب صلاحيات الحساب</span></div>'
+        + report_filter_box("session-reports-table", "بحث داخل التقارير المعروضة")
+        + '<div id="session-reports-table">'
+        + table(["التاريخ", "المادة", "عنوان التقرير", "الحالة", "ملاحظة المنسق", "الإجراءات"], rows)
+        + '</div></section>'
+    )
+    if user["role"] in ("admin", "coordinator"):
+        summaries = db.scalars(select(CenterReport).order_by(CenterReport.id.desc()).limit(200)).all()
+        summaryrows = []
         for item in summaries:
-            if not center_allowed(user,item.center_id):continue
-            action=""
-            if user["role"]=="coordinator" and item.author_id==user["id"] and item.status in ("draft","returned"):
-                action=form(f"/platform/summary/{item.id}/submit",csrf,"","إرسال للإدارة")
-            if user["role"]=="admin" and item.status=="submitted":
-                action=form(f"/platform/summary/{item.id}/review",csrf,
-                            '<input name="decision" type="hidden" value="approved">',"مصادقة")
-                action+=form(f"/platform/summary/{item.id}/review",csrf,
-                            '<input name="decision" type="hidden" value="returned">'+area("comment","سبب الإرجاع"),"إرجاع")
-            summaryrows.append([e(db.get(Center,item.center_id).name),e(item.period_type),e(item.period_start),
-                                e(item.period_end),e(STATUS_LABELS.get(item.status,item.status)),action])
-        body+='<section><h2>تقارير المنسقين (المصادقة من إدارة الجمعية)</h2>'+table(["المركز","المدة","من","إلى","الحالة","الإجراء"],summaryrows)+'</section>'
-        if user["role"]=="coordinator":
-            years=db.scalars(select(Year)).all()
-            body+='<section><h2>تقرير دوري للمنسق</h2>'+form("/platform/summary",csrf,
-                choose("year_id","السنة",[(y.id,y.label) for y in years])+
-                choose("center_id","المركز",center_options(db,user))+
-                choose("period_type","التواتر",[("weekly","أسبوعي"),("monthly","شهري"),("activity","نشاط"),("annual","سنوي")])+
-                field("period_start","من","date")+field("period_end","إلى","date")+area("analysis","التحليل والتوصيات"),"حفظ التقرير")+'</section>'
-    return page(request,user,"التقارير والمصادقة",body)
+            if not center_allowed(user, item.center_id):
+                continue
+            actions = []
+            if user["role"] == "coordinator" and item.author_id == user["id"] and item.status in ("draft", "returned"):
+                actions.append(form(f"/platform/summary/{item.id}/submit", csrf, "", "إرسال للإدارة"))
+            if user["role"] == "admin" and item.status == "submitted":
+                actions.append(form(
+                    f"/platform/summary/{item.id}/review", csrf,
+                    '<input name="decision" type="hidden" value="approved">', "مصادقة"
+                ))
+                actions.append(
+                    '<details class="pv2-review-disclosure"><summary>إرجاع للتصحيح</summary>'
+                    + form(f"/platform/summary/{item.id}/review", csrf,
+                           '<input name="decision" type="hidden" value="returned">'
+                           '<label>سبب الإرجاع'
+                           '<textarea name="comment" required minlength="5" rows="3"></textarea></label>',
+                           "تأكيد الإرجاع") + '</details>'
+                )
+            summaryrows.append([
+                e(db.get(Center, item.center_id).name), e(item.period_type),
+                e(item.period_start), e(item.period_end),
+                e(STATUS_LABELS.get(item.status, item.status)),
+                '<div class="pv2-review-actions">' + "".join(actions) + '</div>' if actions else "—",
+            ])
+        body += (
+            '<section class="pv2-review-list"><div class="pv2-section-head">'
+            '<h2>تقارير المنسقين</h2><span>مراجعة إدارة الجمعية</span></div>'
+            + report_filter_box("center-reports-table", "بحث داخل تقارير المنسقين")
+            + '<div id="center-reports-table">'
+            + table(["المركز", "المدة", "من", "إلى", "الحالة", "الإجراء"], summaryrows)
+            + '</div></section>'
+        )
+        if user["role"] == "coordinator":
+            years = db.scalars(select(Year)).all()
+            body += (
+                '<section class="pv2-review-create"><details>'
+                '<summary>إنشاء تقرير دوري جديد للمنسق</summary>'
+                '<p class="subtle">حدد السنة والمركز والفترة، ثم أضف التحليل والتوصيات.</p>'
+                + form("/platform/summary", csrf,
+                       choose("year_id", "السنة", [(y.id, y.label) for y in years]) +
+                       choose("center_id", "المركز", center_options(db, user)) +
+                       choose("period_type", "التواتر", [
+                           ("weekly", "أسبوعي"), ("monthly", "شهري"),
+                           ("activity", "نشاط"), ("annual", "سنوي"),
+                       ]) +
+                       field("period_start", "من", "date") +
+                       field("period_end", "إلى", "date") +
+                       area("analysis", "التحليل والتوصيات"), "حفظ التقرير")
+                + '</details></section>'
+            )
+    return page(request, user, "التقارير والمصادقة", body)
+
 
 @app.post("/platform/reports/{report_id}/review")
 def review_report(report_id:int,request:Request,token:str=Form(alias="_csrf"),decision:str=Form(),comment:str=Form(""),
