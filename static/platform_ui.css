@@ -238,3 +238,33 @@
 @media(max-width:1000px){.pv2-attendance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:550px){.pv2-attendance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.pv2 .pv2-attendance-form{min-width:240px}}
 @media print{.pv2 .pv2-attendance-form{display:none!important}.pv2-attendance-stat{break-inside:avoid}}
+
+
+/* Sitewide finishing pass: responsive navigation, orientation, and common controls. */
+.pv2 [hidden]{display:none!important}
+.pv2-nav-search-label{display:block;margin:0 9px 5px;font-size:11px;font-weight:700;color:#587589}
+.pv2 .pv2-nav-search{display:block;width:calc(100% - 18px);margin:0 9px 13px;min-height:43px;border:1px solid #c8d9e3;border-radius:10px;padding:9px 12px;background:#f7fafc;font-size:13px;box-sizing:border-box}
+.pv2 .pv2-nav-search:focus{background:white}
+.pv2-nav-no-results{font-size:12px;color:#6a8292;padding:10px 13px;margin:0}
+.pv2-breadcrumbs{display:flex;align-items:center;gap:9px;flex-wrap:wrap;color:#5e7a8e;font-size:12px;margin-bottom:10px}
+.pv2-breadcrumbs a{color:#136485;text-decoration:underline;text-underline-offset:3px}
+.pv2-breadcrumbs [aria-current]{color:#526f80}
+.pv2-page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px 18px;flex-wrap:wrap;margin-bottom:16px}
+.pv2 .pv2-page-heading .pv2-page-title{margin:0}
+.pv2-back-home{display:inline-flex;align-items:center;justify-content:center;min-height:40px;border:1px solid #d2e3e9;border-radius:10px;background:#fff;padding:8px 14px;text-decoration:none;font-size:12px;font-weight:700;color:#145e7f}
+.pv2-back-home:hover{background:#eaf7f4;color:#096f5b}
+.pv2 main section:focus-within{border-color:#c8e1e1}
+.pv2 td,.pv2 th{overflow-wrap:anywhere}
+.pv2 table tbody tr:last-child td{border-bottom:0}
+.pv2 .table-scroll:focus-within{box-shadow:0 0 0 2px rgba(14,138,114,.12)}
+.pv2 .form-grid>button,.pv2 .form-grid>.button{min-height:44px}
+.pv2 form button{transition:background .12s ease}
+.pv2 input[type="checkbox"],.pv2 input[type="radio"]{accent-color:#087f68}
+.pv2 :disabled{cursor:not-allowed}
+@media(max-width:980px){
+.pv2-mobile-menu .pv2-nav-search-label{margin-top:12px}
+.pv2-mobile-menu .pv2-nav-search{max-width:420px;margin-bottom:10px}
+.pv2-mobile-menu:not([open]) .pv2-nav-search{display:none}
+}
+@media(max-width:600px){.pv2-page-heading{align-items:flex-start}.pv2-back-home{font-size:12px}}
+@media print{.pv2-breadcrumbs,.pv2-back-home,.pv2-nav-search,.pv2-nav-search-label{display:none!important}}
