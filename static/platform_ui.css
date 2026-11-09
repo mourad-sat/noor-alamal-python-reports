@@ -134,3 +134,45 @@
 .pv2-roster-register details>p{margin:0 0 20px}
 @media(max-width:700px){.pv2-track-grid{grid-template-columns:minmax(0,1fr)}.pv2-track-link{min-height:60px}}
 @media print{.pv2-roster-register{display:none!important}}
+
+
+/* Weekly and monthly reports: responsive visual indicators and print-ready layout. */
+.pv2 .pv2-report-intro{background:linear-gradient(135deg,#fff,#f3faf9);border-right:4px solid #13886f}
+.pv2-report-eyebrow{font-weight:700;font-size:12px;color:#0c8267!important;margin:0 0 5px}
+.pv2 .pv2-report-head h2{font-size:clamp(20px,2.4vw,26px);margin:0 0 5px}
+.pv2-report-head p{margin:0;color:#4c697d}
+.pv2-report-filters{margin:22px 0 15px;padding:18px;background:#f7fafc;border:1px solid #e0eaf0;border-radius:12px}
+.pv2-report-filters label{min-width:min(100%,190px)}
+.pv2-report-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
+.pv2 .pv2-report-download{background:#e8f7f2;color:#087458;border-color:#cce9dc}
+.pv2 .pv2-report-download:hover{background:#d1f1e5;color:#065c44}
+.pv2-report-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
+.pv2-report-stat{background:#f7fafc;border:1px solid #e0eaf0;border-radius:12px;padding:15px 17px;display:flex;flex-direction:column;gap:5px;border-right:3px solid #247c9b;min-width:0}
+.pv2-report-stat--present,.pv2-report-stat--recorded{border-right-color:#148d75}
+.pv2-report-stat--absent,.pv2-report-stat--missing{border-right-color:#d47f47;background:#fffaf6}
+.pv2-report-stat span{font-size:12px;font-weight:600;color:#557084}
+.pv2-report-stat strong{font-size:clamp(24px,3vw,31px);line-height:1.25;font-variant-numeric:tabular-nums;color:#1a4865}
+.pv2-attendance-visual{padding:16px;background:#fbfdfd;border:1px solid #e3edf1;border-radius:12px;margin-top:15px}
+.pv2-attendance-caption{display:flex;justify-content:space-between;gap:10px 20px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.pv2-attendance-caption strong{font-size:13px;color:#214f68}
+.pv2-attendance-caption span{font-size:12px;color:#537186}
+.pv2-attendance-track{height:17px;background:#e8ad82;border-radius:20px;overflow:hidden;display:flex;direction:ltr}
+.pv2-attendance-present{display:block;height:100%;background:#13957a;flex:0 0 auto}
+.pv2-attendance-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#426477}
+.pv2-attendance-legend span{display:inline-flex;align-items:center;gap:6px}
+.pv2-legend-dot{width:10px;height:10px;display:inline-block;border-radius:50%}
+.pv2-legend-dot--present{background:#13957a}
+.pv2-legend-dot--absent{background:#e8ad82}
+.pv2 .pv2-attendance-visual p{margin:12px 0 0}
+.pv2 .pv2-report-track{margin-right:18px;border-right:3px solid #d5e9e4}
+@media(max-width:900px){.pv2-report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.pv2-report-stats{grid-template-columns:1fr}.pv2 .pv2-report-track{margin-right:0}.pv2-report-filters{padding:13px}}
+@media print{
+.pv2 .pv2-report-intro{border-right:0;background:#fff}
+.pv2-report-actions,.pv2-report-filters{display:none!important}
+.pv2-report-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.pv2-report-stat{padding:7px;border:1px solid #bbb;break-inside:avoid}
+.pv2-attendance-track{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pv2 .pv2-report-section{break-inside:auto}
+.pv2 .pv2-report-section h2{break-after:avoid}
+}
