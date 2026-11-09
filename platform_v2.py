@@ -172,6 +172,26 @@ def page(request, user, title, body):
         current = ' aria-current="page"' if active else ""
         nav_items.append(f'<a href="{url}"{current}>{e(label)}</a>')
     nav = "".join(nav_items)
+    # Search never leaves the browser; filtering only hides menu links visually.
+    nav_search = ('<label class="pv2-nav-search-label" for="pv2-nav-filter">'
+                  'البحث في أقسام المنصة</label>'
+                  '<input id="pv2-nav-filter" class="pv2-nav-search" type="search" '
+                  'placeholder="ابحث عن قسم..." autocomplete="off" '
+                  'data-nav-filter="pv2-desktop-links">')
+    mobile_search = ('<label class="pv2-nav-search-label" for="pv2-mobile-filter">'
+                     'البحث في الأقسام</label>'
+                     '<input id="pv2-mobile-filter" class="pv2-nav-search" type="search" '
+                     'placeholder="اسم القسم..." autocomplete="off" '
+                     'data-nav-filter="pv2-mobile-links">')
+    current_section = next((label for label, url in menu if
+        current_path == url or (url != "/platform" and current_path.startswith(url + "/"))), title)
+    breadcrumbs = (
+        '<nav class="pv2-breadcrumbs" aria-label="مسار الصفحة">'
+        '<a href="/platform">الرئيسية</a>'
+        + (f'<span aria-hidden="true">/</span><span aria-current="page">{e(current_section)}</span>'
+           if current_path != "/platform" else "")
+        + '</nav>'
+    )
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
     csrf = post_fields(request.session.get("csrf", ""))
@@ -181,6 +201,7 @@ def page(request, user, title, body):
 <title>{e(title)} | جمعية نور الأمل</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/platform_ui.css">
+<script src="/static/platform_ui.js" defer></script>
 </head><body class="pv2">
 <a class="pv2-skip" href="#main-content">تجاوز القائمة والوصول إلى المحتوى</a>
 <div class="pv2-layout">
@@ -190,7 +211,9 @@ def page(request, user, title, body):
 <span><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></span>
 </a>
 <p class="pv2-nav-title">الأقسام والخدمات</p>
-<nav class="pv2-links" aria-label="التنقل الرئيسي">{nav}</nav>
+{nav_search}
+<nav id="pv2-desktop-links" class="pv2-links" aria-label="التنقل الرئيسي">{nav}</nav>
+<p class="pv2-nav-no-results" data-empty-for="pv2-desktop-links" hidden>ما لقيناش قسم مطابق.</p>
 </aside>
 <div class="pv2-content-wrap">
 <header class="pv2-topbar">
@@ -202,10 +225,15 @@ def page(request, user, title, body):
 </header>
 <details class="pv2-mobile-menu">
 <summary>فتح قائمة أقسام المنصة</summary>
-<nav class="pv2-links" aria-label="التنقل على الهاتف">{nav}</nav>
+{mobile_search}
+<nav id="pv2-mobile-links" class="pv2-links" aria-label="التنقل على الهاتف">{nav}</nav>
+<p class="pv2-nav-no-results" data-empty-for="pv2-mobile-links" hidden>ما لقيناش قسم مطابق.</p>
 </details>
 <main class="pv2-main" id="main-content" tabindex="-1">
-<h1 class="pv2-page-title">{e(title)}</h1>{body}
+{breadcrumbs}
+<div class="pv2-page-heading"><h1 class="pv2-page-title">{e(title)}</h1>
+<a class="pv2-back-home no-print" href="/platform">لوحة القيادة</a></div>
+{body}
 </main>
 <footer class="pv2-footnote">جمعية نور الأمل · نظام التسيير الإداري</footer>
 </div></div></body></html>''')
