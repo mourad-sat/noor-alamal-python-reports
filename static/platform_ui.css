@@ -208,3 +208,33 @@
 .pv2-session-report-return p{color:#81571a;margin:4px 0 0}
 @media(max-width:750px){.pv2-report-editor-grid,.pv2-report-steps{grid-template-columns:minmax(0,1fr)}}
 @media print{.pv2-session-report-editor{display:none!important}}
+
+
+/* Session attendance: status choices and summary cards, optimized for touch. */
+.pv2-attendance-overview{margin:19px 0 27px;padding:18px;background:#f8fbfd;border:1px solid #dce9ef;border-radius:14px}
+.pv2-attendance-overview .pv2-section-head{margin-bottom:13px}
+.pv2-attendance-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
+.pv2-attendance-stat{display:flex;flex-direction:column;gap:5px;border:1px solid #e0eaf0;border-radius:12px;background:#fff;padding:14px;border-top:4px solid #12896e}
+.pv2-attendance-stat--absent{border-top-color:#cf6957}
+.pv2-attendance-stat--late{border-top-color:#d99a42}
+.pv2-attendance-stat--unmarked{border-top-color:#8294a5}
+.pv2-attendance-stat span{color:#486578;font-weight:600;font-size:12px}
+.pv2-attendance-stat strong{color:#183f57;font-size:30px;line-height:1.2;font-variant-numeric:tabular-nums}
+.pv2-attendance-overview p{margin:12px 0 0}
+.pv2-attendance-session .table-scroll{margin-top:10px}
+.pv2 .pv2-attendance-form{display:grid;gap:9px;min-width:260px}
+.pv2 .pv2-attendance-options{border:0;padding:0;margin:0;display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+.pv2 .pv2-attendance-options legend{font-size:12px;font-weight:700;color:#456579;margin-bottom:6px}
+.pv2 .pv2-attendance-option{display:block;position:relative;flex:1 1 73px;min-width:69px;font-size:12px;font-weight:700;cursor:pointer}
+.pv2 .pv2-attendance-option input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.pv2 .pv2-attendance-option span{display:flex;align-items:center;justify-content:center;min-height:42px;padding:9px 10px;background:#f7fafc;color:#244f68;border:1px solid #bfcfd9;border-radius:9px;white-space:nowrap}
+.pv2 .pv2-attendance-option input:checked+span{background:#e7f6ee;color:#076648;border-color:#0b9067;box-shadow:inset 0 0 0 1px #0b9067}
+.pv2 .pv2-attendance-option input[value="absent"]:checked+span{background:#fff0ed;color:#a43b31;border-color:#d67868;box-shadow:inset 0 0 0 1px #d67868}
+.pv2 .pv2-attendance-option input[value="late"]:checked+span{background:#fff7e8;color:#986318;border-color:#d59f43;box-shadow:inset 0 0 0 1px #d59f43}
+.pv2 .pv2-attendance-option input:focus-visible+span{outline:3px solid #19a883;outline-offset:2px}
+.pv2 .pv2-attendance-option input:disabled+span{opacity:.45;cursor:not-allowed;background:#eef0f2}
+.pv2 .pv2-attendance-form button{justify-self:start;padding:9px 15px}
+.pv2 .pv2-attendance-hint{color:#a13739;font-size:11px;line-height:1.6;margin:0}
+@media(max-width:1000px){.pv2-attendance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:550px){.pv2-attendance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.pv2 .pv2-attendance-form{min-width:240px}}
+@media print{.pv2 .pv2-attendance-form{display:none!important}.pv2-attendance-stat{break-inside:avoid}}
