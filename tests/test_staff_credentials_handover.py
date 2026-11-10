@@ -24,7 +24,7 @@ def test_new_staff_receives_private_printable_handover(client):
     assert "غيّر كلمة المرور عند أول تسجيل دخول" in response.text
     assert "no-store" in response.headers["cache-control"]
     assert response.headers["pragma"] == "no-cache"
-    assert response.headers["referrer-policy"] == "no-referrer"
+    assert '<meta name="referrer" content="no-referrer">' in response.text
 
     # A later GET of the professional card must never disclose the password.
     card = client.get("/platform/staff/1/card")
