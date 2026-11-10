@@ -176,13 +176,25 @@ def page(request, user, title, body):
         menu.append(("التقارير القديمة", "/reports"))
     current_path = request.url.path.rstrip("/") or "/"
     nav_items = []
+    nav_icons = {
+        "/platform": "⌂", "/platform/learners": "♙",
+        "/platform/schedule": "▦", "/platform/reports": "▤",
+        "/platform/aggregates": "▥", "/platform/attendance/stats": "◉",
+        "/platform/grades": "✦", "/platform/staff": "♧",
+        "/platform/notifications": "♧", "/platform/notices": "▣",
+        "/platform/discipline": "⚑", "/platform/settings": "⚙",
+    }
     for label, url in menu:
         # Keep parent navigation highlighted for detail/edit pages.
         active = current_path == url or (
             url != "/platform" and current_path.startswith(url + "/")
         )
         current = ' aria-current="page"' if active else ""
-        nav_items.append(f'<a href="{url}"{current}>{e(label)}</a>')
+        nav_items.append(
+            f'<a href="{url}"{current}>'
+            f'<span class="pv2-nav-icon" aria-hidden="true">{nav_icons.get(url, "◫")}</span>'
+            f'<span>{e(label)}</span></a>'
+        )
     nav = "".join(nav_items)
     # Search never leaves the browser; filtering only hides menu links visually.
     nav_search = ('<label class="pv2-nav-search-label" for="pv2-nav-filter">'
@@ -204,23 +216,33 @@ def page(request, user, title, body):
            if current_path != "/platform" else "")
         + '</nav>'
     )
+    dashboard_top_tools = (
+        '<div class="pv2-neon-tools no-print">'
+        '<button class="pv2-theme-toggle" type="button" '
+        'data-dashboard-theme-toggle aria-label="تبديل مظهر لوحة القيادة" '
+        'aria-pressed="true" title="تبديل المظهر">☾</button>'
+        '<label class="pv2-neon-search-label" for="pv2-dashboard-search">بحث سريع</label>'
+        '<input class="pv2-neon-search" id="pv2-dashboard-search" type="search" '
+        'placeholder="بحث سريع في الأقسام..." data-nav-filter="pv2-desktop-links">'
+        '</div>'
+    ) if current_path == "/platform" else ""
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
     csrf = post_fields(request.session.get("csrf", ""))
     return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#145b83">
+<meta name="theme-color" content="{"#0b1426" if current_path == "/platform" else "#145b83"}">
 <title>{e(title)} | جمعية نور الأمل</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/platform_ui.css">
 <script src="/static/platform_ui.js" defer></script>
-</head><body class="pv2">
+</head><body class="pv2{" pv2-dashboard" if current_path == "/platform" else ""}">
 <a class="pv2-skip" href="#main-content">تجاوز القائمة والوصول إلى المحتوى</a>
 <div class="pv2-layout">
 <aside class="pv2-sidebar" aria-label="القائمة الرئيسية">
 <a class="pv2-brand" href="/platform">
 <img src="/static/noor_official_logo.webp" alt="" width="51" height="51">
-<span><strong>جمعية نور الأمل</strong><small>برنامج الفرصة الثانية – الجيل الجديد</small></span>
+<span><strong>نور الأمل</strong><small>جمعية نور الأمل</small></span>
 </a>
 <p class="pv2-nav-title">الأقسام والخدمات</p>
 {nav_search}
@@ -229,7 +251,8 @@ def page(request, user, title, body):
 </aside>
 <div class="pv2-content-wrap">
 <header class="pv2-topbar">
-<div><p class="pv2-heading-sub">منصة التسيير الإداري</p><strong>{e(title)}</strong></div>
+<div class="pv2-topbar-title"><p class="pv2-heading-sub">منصة التسيير الإداري</p><strong>{e(title)}</strong></div>
+{dashboard_top_tools}
 <div class="pv2-account">
 <span class="pv2-user">{username} · {role_label}</span>
 <form class="pv2-logout" method="post" action="/logout">{csrf}<button type="submit">تسجيل الخروج</button></form>
@@ -293,9 +316,128 @@ def ensure_data(db):
             db.add(Center(name=name, area=area))
         db.commit()
 
+def dashboard_attendance_snapshot(db: Session, center_ids, today: date | None = None):
+    """Real daily rates, based only on recorded attendance in the actor's centers."""
+    today = today or date.today()
+    dates = [today - timedelta(days=i) for i in range(5, -1, -1)]
+    if not center_ids:
+        return {"dates": dates, "daily": [None] * len(dates),
+                "present": 0, "late": 0, "absent": 0, "sessions": 0,
+                "recent": []}
+    records = db.execute(
+        select(SessionDay.held_on, Attendance.status, func.count(Attendance.id))
+        .join(Attendance, Attendance.session_id == SessionDay.id)
+        .join(Slot, Slot.id == SessionDay.slot_id)
+        .where(Slot.center_id.in_(center_ids),
+               SessionDay.held_on >= dates[0], SessionDay.held_on <= today,
+               SessionDay.status != "canceled")
+        .group_by(SessionDay.held_on, Attendance.status)
+    ).all()
+    by_day = {day: {"present": 0, "late": 0, "absent": 0} for day in dates}
+    for day, status, count in records:
+        if day in by_day and status in by_day[day]:
+            by_day[day][status] += count
+    totals = {status: sum(by_day[day][status] for day in dates)
+              for status in ("present", "late", "absent")}
+    daily = []
+    for day in dates:
+        entries = by_day[day]
+        recorded = sum(entries.values())
+        daily.append(round(100 * (entries["present"] + entries["late"]) / recorded, 1)
+                     if recorded else None)
+    sessions = db.scalar(
+        select(func.count(func.distinct(SessionDay.id)))
+        .join(Slot, Slot.id == SessionDay.slot_id)
+        .where(Slot.center_id.in_(center_ids),
+               SessionDay.held_on >= dates[0], SessionDay.held_on <= today,
+               SessionDay.status != "canceled")
+    ) or 0
+    recent = [
+        (day, sum(by_day[day].values()))
+        for day in reversed(dates) if sum(by_day[day].values()) > 0
+    ][:3]
+    return {"dates": dates, "daily": daily, "sessions": sessions,
+            "recent": recent, **totals}
+
+
+def dashboard_neon_charts(snapshot):
+    """Accessible inline SVG and ring, strictly from recorded attendance."""
+    present, late, absent = (snapshot[k] for k in ("present", "late", "absent"))
+    recorded = present + late + absent
+    rate = round(100 * (present + late) / recorded, 1) if recorded else None
+    present_percent = (present * 100 / recorded) if recorded else 0
+    late_percent = (late * 100 / recorded) if recorded else 0
+    ring = (
+        '<div class="pv2-neon-ring" role="img" '
+        f'aria-label="حاضر: {present}، متأخر: {late}، غائب: {absent}" '
+        f'style="--ring-present:{present_percent:.2f}%;'
+        f'--ring-late:{present_percent + late_percent:.2f}%">'
+        f'<strong>{"—" if rate is None else str(rate) + "%"}</strong>'
+        '<small>نسبة الحضور</small></div>'
+    )
+    legend = "".join(
+        f'<span class="pv2-neon-legend-row"><i class="pv2-neon-dot pv2-neon-dot--{kind}"></i>'
+        f'{label}<b>{count}</b></span>'
+        for kind, label, count in (
+            ("present", "حاضر", present),
+            ("absent", "غائب", absent),
+            ("late", "متأخر", late),
+        )
+    )
+    rate_card = (
+        '<section class="pv2-neon-panel pv2-neon-donut">'
+        '<h2>حالة الحضور</h2>'
+        f'<div class="pv2-neon-donut-body">{ring}'
+        f'<div class="pv2-neon-legend">{legend}</div></div>'
+        '<p class="pv2-neon-caption">المؤشر مبني على سجلات الأيام الستة الأخيرة فقط.</p>'
+        '</section>'
+    )
+    values = snapshot["daily"]
+    available = [(i, value) for i, value in enumerate(values) if value is not None]
+    dots = []
+    lines = []
+    for i, value in available:
+        x = 32 + i * 90
+        y = 175 - 1.3 * value
+        dots.append(f'<circle cx="{x}" cy="{y:.1f}" r="5" />')
+    for (start_i, start_value), (end_i, end_value) in zip(available, available[1:]):
+        # Only connect adjacent days that both have attendance records.
+        if end_i == start_i + 1:
+            lines.append(
+                f'<line x1="{32 + start_i * 90}" y1="{175 - start_value * 1.3:.1f}" '
+                f'x2="{32 + end_i * 90}" y2="{175 - end_value * 1.3:.1f}" />'
+            )
+    chart = (
+        '<svg class="pv2-neon-chart" viewBox="0 0 520 206" role="img" '
+        'aria-label="نسبة الحضور اليومية من سجلات الأيام الستة الأخيرة">'
+        '<g class="pv2-neon-grid">'
+        + "".join(
+            f'<line x1="25" y1="{175 - level * 1.3:.1f}" '
+            f'x2="500" y2="{175 - level * 1.3:.1f}" />'
+            for level in (0, 25, 50, 75, 100)
+        )
+        + '</g><g class="pv2-neon-line">'
+        + "".join(lines) + '</g><g class="pv2-neon-points">'
+        + "".join(dots) + '</g></svg>'
+        if available else '<div class="pv2-neon-empty">لا توجد سجلات حضور خلال هذه الفترة.</div>'
+    )
+    day_labels = "".join(
+        f'<span title="{day.isoformat()}">{e(day.strftime("%d/%m"))}</span>'
+        for day in snapshot["dates"]
+    )
+    trend_card = (
+        '<section class="pv2-neon-panel pv2-neon-trend">'
+        '<h2>تطور الحضور خلال 6 أيام</h2>'
+        + chart + f'<div class="pv2-neon-days">{day_labels}</div>'
+        '<p class="pv2-neon-caption">لا تُوصل الأيام التي لا تتوفر على سجلات حضور.</p>'
+        '</section>'
+    )
+    return trend_card, rate_card, rate
+
+
 @app.get("/platform", response_class=HTMLResponse)
-def home(request: Request, db: Session=Depends(get_db), user=Depends(actor)):
-    """Role-scoped overview with a clear next action and center summaries."""
+def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
+    """A reference-matched dark dashboard, with truthful role-scoped metrics."""
     ensure_data(db)
     center_ids = [center_id for center_id, _ in center_options(db, user)]
     enrollments = db.scalars(
@@ -304,116 +446,115 @@ def home(request: Request, db: Session=Depends(get_db), user=Depends(actor)):
     pending_count = db.scalar(
         select(func.count()).select_from(Attendance)
         .join(Enrollment, Attendance.enrollment_id == Enrollment.id)
-        .where(
-            Enrollment.center_id.in_(center_ids),
-            Attendance.status == "absent",
-            Attendance.permit_id.is_(None),
-        )
+        .where(Enrollment.center_id.in_(center_ids),
+               Attendance.status == "absent", Attendance.permit_id.is_(None))
     ) or 0
     notices_count = db.scalar(
         select(func.count()).select_from(Notice)
         .join(Enrollment, Notice.enrollment_id == Enrollment.id)
-        .where(
-            Enrollment.center_id.in_(center_ids), Notice.status == "draft",
-        )
+        .where(Enrollment.center_id.in_(center_ids), Notice.status == "draft")
     ) or 0
     if user["role"] in ("admin", "coordinator"):
         todo_count = db.scalar(
             select(func.count()).select_from(SessionReport)
             .join(SessionDay, SessionReport.session_id == SessionDay.id)
             .join(Slot, SessionDay.slot_id == Slot.id)
-            .where(
-                Slot.center_id.in_(center_ids),
-                SessionReport.status == "submitted",
-            )
+            .where(Slot.center_id.in_(center_ids), SessionReport.status == "submitted")
         ) or 0
         todo_text = f"{todo_count} تقرير حصة بانتظار المصادقة"
     else:
         todo_count = db.scalar(
             select(func.count()).select_from(SessionReport).where(
-                SessionReport.author_id == user["id"],
-                SessionReport.status == "returned",
-            )
+                SessionReport.author_id == user["id"], SessionReport.status == "returned")
         ) or 0
         todo_text = f"{todo_count} تقرير أُعيد إليك للتصحيح"
-    todo = (
-        '<section class="pv2-overview pv2-todo" aria-label="مهام بانتظارك">'
-        '<a class="pv2-quick-link" href="/platform/reports">'
-        '<span class="pv2-quick-icon" aria-hidden="true">!</span>'
-        f'<span><strong>{e(todo_text)}</strong>'
-        '<small>اضغط لفتح قائمة التقارير</small></span>'
-        '<span class="pv2-quick-arrow" aria-hidden="true">←</span>'
-        '</a></section>'
-    ) if todo_count else ""
-    centers = db.scalars(select(Center).where(Center.id.in_(center_ids)).order_by(Center.id)).all()
-    tracks = db.scalars(select(Track).where(Track.center_id.in_(center_ids))).all()
-    center_totals = {c.id: 0 for c in centers}
+    centers = db.scalars(
+        select(Center).where(Center.id.in_(center_ids)).order_by(Center.id)
+    ).all()
+    tracks = db.scalars(
+        select(Track).where(Track.center_id.in_(center_ids))
+    ).all()
+    snapshot = dashboard_attendance_snapshot(db, center_ids)
+    trend_card, ring_card, attendance_rate = dashboard_neon_charts(snapshot)
+    enrollment_totals = {center.id: 0 for center in centers}
     for enrollment in enrollments:
-        center_totals[enrollment.center_id] += 1
+        enrollment_totals[enrollment.center_id] += 1
 
-    def stat(label: str, value: int, description: str, kind: str) -> str:
+    def metric(kind, symbol, label, value, hint):
         return (
-            f'<div class="pv2-stat pv2-stat--{kind}">'
-            f'<span class="pv2-stat-label">{e(label)}</span>'
-            f'<strong class="pv2-stat-number">{value}</strong>'
-            f'<span class="pv2-stat-note">{e(description)}</span></div>'
+            f'<div class="pv2-neon-metric pv2-neon-metric--{kind}">'
+            f'<span class="pv2-neon-metric-icon" aria-hidden="true">{symbol}</span>'
+            f'<strong>{e(value)}</strong><span>{e(label)}</span>'
+            f'<small>{e(hint)}</small></div>'
         )
 
+    week_rate = "—" if attendance_rate is None else f"{attendance_rate}%"
     intro = (
-        '<div class="pv2-welcome">'
-        '<div><p class="pv2-eyebrow">مساحة العمل اليومية</p>'
-        '<h2>مرحباً بكم في منصة نور الأمل</h2>'
-        '<p>نظرة سريعة على المستفيدين والمهام الإدارية المتاحة لحسابكم.</p></div>'
-        '<a class="pv2-welcome-link" href="/platform/learners">عرض المستفيدين</a>'
-        '</div>'
+        '<div class="pv2-neon-intro">'
+        '<div><h2>👋 مرحبا بك في منصة نور الأمل</h2>'
+        '<p>إحصائيات شاملة ومتابعة فعالة للأنشطة.</p></div>'
+        '<span class="pv2-neon-period">آخر 6 أيام</span></div>'
     )
     metrics = (
-        '<section class="pv2-overview" aria-label="المؤشرات الرئيسية">'
-        '<div class="pv2-section-head"><h2>مؤشرات العمل</h2>'
-        '<span>حسب المراكز المتاحة لحسابك</span></div>'
-        '<div class="pv2-stats">'
-        + stat("المستفيدون المسجلون", len(enrollments), "ضمن المراكز المتاحة", "learners")
-        + stat("حصص الغياب المعلّقة", pending_count, "حصص غياب دون رخصة دخول", "absences")
-        + stat("مسودات الإشعارات", notices_count, "مسودات تنتظر المعالجة", "notices")
-        + stat("المراكز المتاحة", len(centers), "حسب صلاحيات المستخدم", "centers")
-        + '</div><p class="pv2-clarification">الغياب المعلّق مؤشر للمتابعة الإدارية، '
-        'وليس قراراً تأديبياً.</p></section>'
+        '<div class="pv2-neon-metrics" aria-label="مؤشرات لوحة القيادة">'
+        + metric("learners", "♙", "المستفيدون", len(enrollments), "ضمن نطاق صلاحياتك")
+        + metric("attendance", "↗", "نسبة الحضور", week_rate, "من سجلات 6 أيام")
+        + metric("programs", "▦", "البرامج", len(tracks), "المسالك المتاحة")
+        + metric("sessions", "▣", "الحصص", snapshot["sessions"], "حصص غير ملغاة خلال 6 أيام")
+        + '</div>'
     )
+    todo = (
+        '<a class="pv2-neon-todo" href="/platform/reports">'
+        f'<strong>{e(todo_text)}</strong><span>عرض التقارير والمراجعة ←</span></a>'
+    ) if todo_count else ""
     actions = [
-        ("المستفيدون", "استعراض الملفات حسب المركز والمسلك", "/platform/learners", "👥"),
-        ("تقارير الحصص", "متابعة التقارير والأنشطة اليومية", "/platform/reports", "▤"),
-        ("جدولة الحصص", "الاطلاع على المواعيد والبرنامج", "/platform/schedule", "▦"),
-        ("التنبيهات", "مراجعة الإشعارات والتنبيهات", "/platform/notifications", "◉"),
+        ("تسجيل الحضور", "▦", "/platform/schedule", "green"),
+        ("تقرير جديد", "▤", "/platform/reports", "blue"),
+        ("إضافة مستفيد", "♙", "/platform/learners", "purple"),
     ]
-    if user["role"] in ("admin", "coordinator"):
-        actions.append(("استكمال الملفات", "مراجعة المعلومات التي تحتاج استكمالاً", "/platform/profile-completeness", "✓"))
-    shortcuts = (
-        '<section class="pv2-overview"><div class="pv2-section-head"><h2>الوصول السريع</h2>'
-        '<span>اختصارات لأكثر المهام استعمالاً</span></div><div class="pv2-quick-grid">'
+    quick = (
+        '<section class="pv2-neon-panel pv2-neon-quick"><h2>إجراءات سريعة</h2>'
+        '<div class="pv2-neon-actions">'
         + "".join(
-            f'<a class="pv2-quick-link" href="{url}">'
-            f'<span class="pv2-quick-icon" aria-hidden="true">{symbol}</span>'
-            f'<span><strong>{e(label)}</strong><small>{e(description)}</small></span>'
-            '<span class="pv2-quick-arrow" aria-hidden="true">←</span></a>'
-            for label, description, url, symbol in actions
+            f'<a class="pv2-neon-action pv2-neon-action--{kind}" href="{url}">'
+            f'<span aria-hidden="true">{icon}</span><strong>{e(label)}</strong></a>'
+            for label, icon, url, kind in actions
         ) + '</div></section>'
     )
+    recent = "".join(
+        '<div class="pv2-neon-activity">'
+        '<span class="pv2-neon-check" aria-hidden="true">✓</span>'
+        f'<span>سجلات حضور مسجلة في {e(day.isoformat())}</span>'
+        f'<small>{count} سجل</small></div>'
+        for day, count in snapshot["recent"]
+    ) or '<p class="pv2-neon-empty">لا توجد أنشطة حضور مسجلة خلال آخر 6 أيام.</p>'
+    activity = (
+        '<section class="pv2-neon-panel pv2-neon-activity-panel">'
+        '<h2>آخر الأنشطة</h2>' + recent + '</section>'
+    )
     center_cards = "".join(
-        '<article class="pv2-center-card">'
-        f'<h3>{e(center.name)}</h3><p>{e(center.area)}</p>'
-        '<div class="pv2-center-meta">'
-        f'<span><strong>{center_totals[center.id]}</strong> مستفيد</span>'
-        f'<span><strong>{sum(t.center_id == center.id for t in tracks)}</strong> مسلك</span>'
-        '</div></article>'
-        for center in centers
+        '<article class="pv2-neon-center">'
+        f'<strong>{e(center.name)}</strong><small>{e(center.area)}</small>'
+        f'<span>{enrollment_totals[center.id]} مستفيد · '
+        f'{sum(track.center_id == center.id for track in tracks)} مسلك</span>'
+        '</article>' for center in centers
     )
     centers_section = (
-        '<section class="pv2-overview"><div class="pv2-section-head"><h2>المراكز</h2>'
-        '<span>ملخص حسب نطاق الصلاحيات</span></div>'
-        f'<div class="pv2-centers-grid">{center_cards or "<p>لا توجد مراكز متاحة.</p>"}</div>'
-        '</section>'
+        '<section class="pv2-neon-panel pv2-neon-centers"><h2>المراكز المتاحة</h2>'
+        '<div class="pv2-neon-centers-grid">'
+        + (center_cards or '<p>لا توجد مراكز متاحة لحسابك.</p>')
+        + '</div><p class="pv2-neon-caption">الغياب دون إذن مؤشر متابعة إدارية، وليس قراراً تأديبياً.</p>'
+        + f'<p class="pv2-neon-caption">حصص الغياب المعلقة: {pending_count} · '
+        f'مسودات الإشعارات: {notices_count}</p></section>'
     )
-    return page(request, user, "لوحة القيادة", intro + todo + metrics + shortcuts + centers_section)
+    content = (
+        '<div class="pv2-neon-dashboard">' + intro + todo + metrics +
+        '<div class="pv2-neon-charts">' + trend_card + ring_card + '</div>' +
+        '<div class="pv2-neon-bottom">' + activity + quick + '</div>' +
+        centers_section + '</div>'
+    )
+    return page(request, user, "لوحة القيادة", content)
+
 
 @app.get("/platform/years", response_class=HTMLResponse)
 def years_page(request:Request, db:Session=Depends(get_db), user=Depends(actor)):
