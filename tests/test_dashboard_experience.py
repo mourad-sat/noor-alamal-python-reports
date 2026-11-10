@@ -30,6 +30,9 @@ class FakeDB:
             SimpleNamespace(id=4, center_id=1),
         ])
 
+    def execute(self, statement):
+        return SimpleNamespace(all=lambda: [])
+
     def scalar(self, statement):
         self.scalar_calls += 1
         return 3 if self.scalar_calls == 1 else 1
@@ -46,9 +49,13 @@ def test_dashboard_has_metrics_shortcuts_and_center_overview(monkeypatch):
     })
     user = {"role": "coordinator", "name": "اختبار", "assignments": []}
     html = platform_v2.home(request, db=FakeDB(), user=user).body.decode()
-    assert 'class="pv2-welcome"' in html
-    assert 'class="pv2-stats"' in html
-    assert "حصص الغياب المعلّقة" in html
+    assert 'class="pv2 pv2-dashboard"' in html
+    assert 'class="pv2-neon-metrics"' in html
+    assert 'class="pv2-neon-charts"' in html
+    assert 'class="pv2-neon-ring"' in html
+    assert 'class="pv2-neon-actions"' in html
+    assert 'data-dashboard-theme-toggle' in html
+    assert "حصص الغياب المعلقة" in html
     assert "المراكز المتاحة" in html
     assert "مركز تجريبي" in html
     assert 'href="/platform/profile-completeness"' in html
