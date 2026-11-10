@@ -1580,15 +1580,9 @@ def edit_schedule_page(slot_id: int, request: Request,
     schedule_manager(user, slot.center_id)
     if slot.canceled:
         raise HTTPException(409, "الحصة ملغاة")
-    if db.scalar(select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)):
-        return page(
-            request, user, "تعديل استعمال الزمن",
-            '<section><h2>الحصة لها سجل سابق</h2>'
-            '<p>لا يمكن تغيير توقيت هذه الحصة مباشرة لأنها مرتبطة بسجل يومي. '
-            'احتفظ بالسجل التاريخي وأنشئ حصة جديدة للتوقيت القادم، '
-            'مع توثيق سبب التعديل.</p>'
-            '<a class="button" href="/platform/schedule">العودة إلى استعمال الزمن</a></section>',
-        )
+    has_history = bool(db.scalar(
+        select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)
+    ))
     available_staff = db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
     days = list(enumerate("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()))
     fields = (
@@ -1608,8 +1602,11 @@ def edit_schedule_page(slot_id: int, request: Request,
     )
     body = (
         '<section><h2>تعديل الحصة الأسبوعية</h2>'
-        '<p class="subtle">التعديل مسموح فقط للحصص التي ليس لها سجلات يومية. '
-        'سيتم فحص التعارضات وإخبار المؤطر بالتغيير.</p>'
+        '<p class="subtle">سيتم فحص التعارضات وإخبار المؤطر بالتغيير. '
+        + ('بما أن هذه الحصة لها سجلات يومية، سيُحفَظ توقيتها السابق للأرشيف '
+           'وسيُنشأ إصدار جديد من الجدول، دون تعديل تقارير الحضور القديمة.'
+           if has_history else 'يمكنك تغيير المعلومات مباشرة ما دام لا يوجد سجل يومي.')
+        + '</p>'
         + form(f"/platform/schedule/{slot.id}/edit", request.session["csrf"],
                fields, "حفظ تعديل استعمال الزمن")
         + '</section>'
@@ -1631,29 +1628,43 @@ def edit_schedule(slot_id: int, request: Request,
     schedule_manager(user, slot.center_id)
     if slot.canceled:
         raise HTTPException(409, "لا يمكن تعديل حصة ملغاة")
-    if db.scalar(select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)):
-        raise HTTPException(409, "لا يمكن تعديل حصة لها سجلات يومية؛ أنشئ حصة جديدة.")
+    has_history = bool(db.scalar(
+        select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)
+    ))
     previous_staff_id = slot.staff_id
     previous = (
         f"{slot.track_id}/{slot.staff_id}/{slot.subject}/"
         f"{slot.weekday}/{slot.starts_at}-{slot.ends_at}"
     )
-    validate_schedule_slot(
-        db, track_id, staff_id, subject, weekday,
-        starts_at, ends_at, specific_date, reason, user, existing=slot,
-    )
+    if has_history:
+        # Keep earlier attendance and reports linked to the old, immutable slot.
+        slot.canceled = True
+        db.flush()
+        current = validate_schedule_slot(
+            db, track_id, staff_id, subject, weekday,
+            starts_at, ends_at, specific_date, reason, user,
+        )
+        db.add(current)
+        db.flush()
+        log(db, user, "schedule_supersede", "slot", slot.id,
+            f"الإصدار الجديد {current.id} — {reason.strip()}")
+    else:
+        current = validate_schedule_slot(
+            db, track_id, staff_id, subject, weekday,
+            starts_at, ends_at, specific_date, reason, user, existing=slot,
+        )
     db.add(Notification(
-        staff_id=slot.staff_id,
-        message=f"تم تعديل استعمال الزمن: {slot.subject}، يوم {slot.weekday} الساعة {slot.starts_at}",
+        staff_id=current.staff_id,
+        message=f"تم تعديل استعمال الزمن: {current.subject}، يوم {current.weekday} الساعة {current.starts_at}",
         target="/platform/schedule",
     ))
-    if previous_staff_id != slot.staff_id:
+    if previous_staff_id != current.staff_id:
         db.add(Notification(
             staff_id=previous_staff_id,
             message="تم تغيير الحصة المسندة إليك في استعمال الزمن. راجع الجدول الحالي.",
             target="/platform/schedule",
         ))
-    log(db, user, "schedule_edit", "slot", slot.id, f"{previous} — {reason.strip()}")
+    log(db, user, "schedule_edit", "slot", current.id, f"{previous} — {reason.strip()}")
     db.commit()
     return redirect("/platform/schedule")
 
