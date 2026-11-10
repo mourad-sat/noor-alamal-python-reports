@@ -20,6 +20,11 @@
         link.hidden = !visible;
         if (visible) matches++;
       });
+      // Group labels disappear when no link in the group matches the query.
+      root.querySelectorAll("[data-nav-group]").forEach(function (group) {
+        var groupLinks = Array.prototype.slice.call(group.querySelectorAll("a"));
+        group.hidden = !groupLinks.some(function (link) { return !link.hidden; });
+      });
       if (empty) empty.hidden = matches !== 0;
     }
     input.addEventListener("input", update);
