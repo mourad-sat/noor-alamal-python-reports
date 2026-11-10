@@ -105,8 +105,8 @@ class Enrollment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     learner_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_learners")))
     year_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_years")))
-    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")))
-    track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")))
+    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")), index=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")), index=True)
     enrolled_on: Mapped[date] = mapped_column(Date, default=date.today)
     status: Mapped[str] = mapped_column(String(24), default="active")
     __table_args__ = (UniqueConstraint("learner_id", "year_id", name="uq_v2_enrollment_year"),)
@@ -115,9 +115,9 @@ class Slot(Base):
     __tablename__ = "v2_slots"
     id: Mapped[int] = mapped_column(primary_key=True)
     year_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_years")))
-    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")))
-    track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")))
-    staff_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")))
+    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")), index=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")), index=True)
     subject: Mapped[str] = mapped_column(String(90))
     kind: Mapped[str] = mapped_column(String(25))
     weekday: Mapped[int] = mapped_column(Integer)  # Monday = 0
@@ -147,7 +147,7 @@ class SessionDay(Base):
 class Permit(Base):
     __tablename__ = "v2_permits"
     id: Mapped[int] = mapped_column(primary_key=True)
-    learner_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_learners")))
+    learner_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_learners")), index=True)
     center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")))
     reason: Mapped[str] = mapped_column(Text)
     issued_by: Mapped[str] = mapped_column(String(140))
@@ -157,7 +157,7 @@ class Attendance(Base):
     __tablename__ = "v2_attendance"
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_sessions")))
-    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")))
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")), index=True)
     status: Mapped[str] = mapped_column(String(20))
     permit_id: Mapped[int | None] = mapped_column(ForeignKey(fk("v2_permits")), nullable=True)
     recorded_by: Mapped[str] = mapped_column(String(140))
@@ -214,7 +214,7 @@ class Incident(Base):
 class Discipline(Base):
     __tablename__ = "v2_discipline"
     id: Mapped[int] = mapped_column(primary_key=True)
-    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")))
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")), index=True)
     decision: Mapped[str] = mapped_column(Text)
     minutes: Mapped[str] = mapped_column(Text)
     excluded_from: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -227,7 +227,7 @@ class Discipline(Base):
 class Notice(Base):
     __tablename__ = "v2_notices"
     id: Mapped[int] = mapped_column(primary_key=True)
-    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")))
+    enrollment_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_enrollments")), index=True)
     kind: Mapped[str] = mapped_column(String(30))
     period_key: Mapped[str] = mapped_column(String(36), default="")
     body: Mapped[str] = mapped_column(Text, default="")
