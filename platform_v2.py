@@ -1672,7 +1672,7 @@ def edit_schedule(slot_id: int, request: Request,
 @app.post("/platform/closures")
 def create_closure(request:Request,token:str=Form(alias="_csrf"),center_id:int=Form(),closed_on:date=Form(),
         reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
-    assert_csrf(request,token);coordinator(user,center_id)
+    assert_csrf(request,token);schedule_manager(user,center_id)
     if len(reason.strip())<6:raise HTTPException(422,"سبب الإغلاق إلزامي")
     active=db.scalars(select(SessionDay).join(Slot,SessionDay.slot_id==Slot.id).where(
         Slot.center_id==center_id,SessionDay.held_on==closed_on)).all()
