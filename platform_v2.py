@@ -212,7 +212,46 @@ def page(request, user, title, body):
             f'<span class="pv2-nav-icon" aria-hidden="true">{neon_icon(nav_icons.get(url, "folder"))}</span>'
             f'<span>{e(label)}</span></a>'
         )
-    nav = "".join(nav_items)
+    # Group existing, permission-filtered links without introducing new links.
+    nav_groups = (
+        ("الرئيسية", {"/platform"}),
+        ("المستفيدون والتكوين", {
+            "/platform/years", "/platform/learners", "/platform/schedule",
+            "/platform/staff", "/platform/profile-completeness",
+        }),
+        ("الحضور والتقارير", {
+            "/platform/reports", "/platform/aggregates",
+            "/platform/attendance/stats", "/platform/attendance/corrections",
+            "/platform/grades", "/platform/exports/grades",
+        }),
+        ("الإدارة والخدمات", {
+            "/platform/discipline", "/platform/notices", "/platform/notifications",
+            "/platform/import", "/platform/settings", "/platform/privacy/erase",
+            "/platform/audit", "/reports", "/platform/profile", "/platform/password",
+        }),
+    )
+    group_html = []
+    used_urls = set()
+    for group_name, urls in nav_groups:
+        links = [item for (label, url), item in zip(menu, nav_items) if url in urls]
+        used_urls.update(url for _label, url in menu if url in urls)
+        if links:
+            group_html.append(
+                '<div class="pv2-nav-group" data-nav-group>'
+                f'<p class="pv2-nav-group-heading">{e(group_name)}</p>'
+                + "".join(links) + '</div>'
+            )
+    other_links = [
+        item for (_label, url), item in zip(menu, nav_items)
+        if url not in used_urls
+    ]
+    if other_links:
+        group_html.append(
+            '<div class="pv2-nav-group" data-nav-group>'
+            '<p class="pv2-nav-group-heading">أقسام أخرى</p>'
+            + "".join(other_links) + '</div>'
+        )
+    nav = "".join(group_html)
     # Search never leaves the browser; filtering only hides menu links visually.
     nav_search = ('<label class="pv2-nav-search-label" for="pv2-nav-filter">'
                   'البحث في أقسام المنصة</label>'
@@ -451,7 +490,21 @@ def dashboard_neon_charts(snapshot):
         + '</g><g class="pv2-neon-line">'
         + "".join(lines) + '</g><g class="pv2-neon-points">'
         + "".join(dots) + '</g></svg>'
-        if available else '<div class="pv2-neon-empty">لا توجد سجلات حضور خلال هذه الفترة.</div>'
+        if available else (
+            '<div class="pv2-neon-chart-blank" role="status">'
+            '<svg viewBox="0 0 520 206" aria-hidden="true" focusable="false">'
+            '<g class="pv2-neon-grid">'
+            + "".join(
+                f'<line x1="25" y1="{175 - level * 1.3:.1f}" '
+                f'x2="500" y2="{175 - level * 1.3:.1f}" />'
+                for level in (0, 25, 50, 75, 100)
+            )
+            + '</g><path d="M32 161H482" stroke="#35536d" stroke-dasharray="7 8" '
+            'fill="none" opacity=".7"/></svg>'
+            '<p>لا توجد سجلات حضور خلال هذه الفترة.</p>'
+            '<small>ستظهر نسبة الحضور هنا بعد تسجيل الحصص.</small>'
+            '</div>'
+        )
     )
     day_labels = "".join(
         f'<span title="{day.isoformat()}">{e(day.strftime("%d/%m"))}</span>'
@@ -516,8 +569,9 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         return (
             f'<div class="pv2-neon-metric pv2-neon-metric--{kind}">'
             f'<span class="pv2-neon-metric-icon" aria-hidden="true">{neon_icon(symbol)}</span>'
+            '<div class="pv2-neon-metric-text">'
             f'<strong>{e(value)}</strong><span>{e(label)}</span>'
-            f'<small>{e(hint)}</small></div>'
+            f'<small>{e(hint)}</small></div></div>'
         )
 
     week_rate = "—" if attendance_rate is None else f"{attendance_rate}%"
