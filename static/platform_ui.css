@@ -667,3 +667,90 @@
 .pv2-neon-shell[data-dashboard-appearance="light"] .pv2-report-stat strong,
 .pv2-neon-shell[data-dashboard-appearance="light"] .pv2-attendance-stat strong,
 .pv2-neon-shell[data-dashboard-appearance="light"] .pv2-track-link{color:#16435c}
+
+
+/* Reference #4 detail pass — SVG iconography, Arabic hierarchy, mobile fidelity. */
+.pv2-neon-shell{font-family:"Tajawal","Cairo","Noto Sans Arabic",Tahoma,"Segoe UI",Arial,sans-serif}
+.pv2-neon-shell .pv2-icon{width:23px;height:23px;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.pv2-neon-shell .pv2-nav-icon{width:27px;min-width:27px;height:27px;display:grid;place-items:center}
+.pv2-neon-shell .pv2-nav-icon .pv2-icon{width:25px;height:25px;stroke-width:1.9}
+.pv2-neon-shell .pv2-brand{position:relative}
+.pv2-neon-shell .pv2-brand img{filter:drop-shadow(0 0 11px #14b67c38)}
+.pv2-neon-shell .pv2-sidebar{scrollbar-color:#3c526f #101d31;scrollbar-width:thin}
+.pv2-neon-shell .pv2-links a{letter-spacing:0;gap:12px}
+.pv2-neon-shell .pv2-header-notifications{position:relative;width:45px;height:45px;border-radius:12px;border:1px solid #344965;background:#182c44;display:grid;place-items:center;color:#dfeaff;text-decoration:none}
+.pv2-neon-shell .pv2-header-notifications:hover{background:#25415e;border-color:#35bde3;color:#fff}
+.pv2-neon-shell .pv2-header-notifications .pv2-icon{width:25px;height:25px}
+.pv2-neon-shell .pv2-neon-metric-icon{right:17px;top:20px;width:37px;height:37px;display:grid;place-items:center}
+.pv2-neon-shell .pv2-neon-metric-icon .pv2-icon{width:34px;height:34px;stroke-width:2}
+.pv2-neon-shell .pv2-neon-metric{padding:18px 20px 17px 72px}
+.pv2-neon-shell .pv2-neon-metric strong{font-weight:800;font-variant-numeric:tabular-nums}
+.pv2-neon-shell .pv2-neon-actions{margin-top:21px}
+.pv2-neon-shell .pv2-neon-action .pv2-icon{width:37px;height:37px;stroke-width:1.9}
+.pv2-neon-shell .pv2-neon-action span{display:grid;place-items:center}
+.pv2-neon-shell .pv2-neon-check .pv2-icon{height:20px;width:20px;stroke-width:3}
+.pv2-neon-shell .pv2-neon-activity{margin:8px 0}
+.pv2-neon-shell .pv2-neon-period{font-weight:600}
+.pv2-neon-shell .pv2-neon-tools{max-width:510px}
+.pv2-neon-shell .pv2-neon-search{padding-inline:18px}
+.pv2-neon-shell .pv2-account{flex-shrink:0}
+.pv2-neon-shell .pv2-topbar{gap:14px}
+.pv2-neon-shell .pv2-side-profile{overflow-wrap:anywhere}
+.pv2-neon-shell .pv2-neon-donut-body{min-width:0}
+.pv2-neon-shell .pv2-neon-ring{box-shadow:0 0 22px #08ddb124}
+.pv2-neon-shell .pv2-neon-chart{overflow:hidden}
+.pv2-neon-shell .pv2-neon-panel{overflow:hidden}
+.pv2-neon-shell .pv2-section-head{min-width:0}
+.pv2-neon-shell .pv2-quick-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pv2-neon-shell .pv2-page-heading{align-items:center}
+.pv2-neon-shell .pv2-status{border:1px solid #46566b}
+.pv2-neon-shell a:focus-visible,.pv2-neon-shell button:focus-visible,.pv2-neon-shell input:focus-visible{outline:3px solid #53f4ed;outline-offset:3px}
+@media(min-width:1251px){
+ .pv2-neon-shell .pv2-neon-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:1100px){
+ .pv2-neon-shell .pv2-topbar{flex-wrap:wrap}
+ .pv2-neon-shell .pv2-topbar-title{display:none}
+ .pv2-neon-shell .pv2-neon-tools{flex:1 1 280px;max-width:none}
+ .pv2-neon-shell .pv2-account{flex:0 0 auto}
+ .pv2-neon-shell .pv2-neon-donut-body{flex-wrap:wrap;justify-content:center}
+ .pv2-neon-shell .pv2-neon-legend{flex:1 1 125px}
+}
+@media(max-width:700px){
+ .pv2-neon-shell .pv2-topbar{padding:10px 13px;flex-wrap:wrap;gap:9px}
+ .pv2-neon-shell .pv2-neon-tools{order:2;flex:1 1 100%;width:100%}
+ .pv2-neon-shell .pv2-account{order:1;flex:1 1 100%;width:100%;justify-content:space-between}
+ .pv2-neon-shell .pv2-neon-search{font-size:16px}
+ .pv2-neon-shell .pv2-neon-dashboard{gap:15px}
+ .pv2-neon-shell .pv2-neon-intro{align-items:flex-start}
+ .pv2-neon-shell .pv2-neon-intro h2{font-size:24px}
+ .pv2-neon-shell .pv2-neon-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .pv2-neon-shell .pv2-neon-metric{min-height:128px;padding:16px 10px 14px 51px}
+ .pv2-neon-shell .pv2-neon-metric-icon{right:12px;top:20px}
+ .pv2-neon-shell .pv2-neon-metric-icon .pv2-icon{width:25px;height:25px}
+ .pv2-neon-shell .pv2-neon-metric strong{font-size:26px}
+ .pv2-neon-shell .pv2-neon-action{min-height:112px;padding:9px 4px}
+ .pv2-neon-shell .pv2-neon-action .pv2-icon{width:28px;height:28px}
+ .pv2-neon-shell .pv2-neon-chart{max-height:180px}
+ .pv2-neon-shell .pv2-neon-donut-body{flex-wrap:wrap;justify-content:center}
+ .pv2-neon-shell .pv2-neon-ring{width:148px;height:148px;flex-basis:148px}
+ .pv2-neon-shell .pv2-neon-legend{flex:1 1 125px}
+ .pv2-neon-shell .pv2-mobile-menu .pv2-links{grid-template-columns:minmax(0,1fr)}
+ .pv2-neon-shell .pv2-mobile-menu .pv2-links a{display:flex;align-items:center;gap:12px}
+ .pv2-neon-shell .pv2-mobile-menu .pv2-nav-icon{display:grid;place-items:center}
+ .pv2-neon-shell .pv2-page-heading{align-items:flex-start}
+}
+@media(max-width:380px){
+ .pv2-neon-shell .pv2-neon-metric{min-height:116px;padding:11px 9px 12px 40px}
+ .pv2-neon-shell .pv2-neon-metric-icon{right:9px}
+ .pv2-neon-shell .pv2-neon-metric strong{font-size:23px}
+ .pv2-neon-shell .pv2-neon-action strong{font-size:10px}
+ .pv2-neon-shell .pv2-user{font-size:10px;max-width:48vw;overflow-wrap:anywhere}
+}
+@media print{
+ .pv2-neon-shell .pv2-header-notifications{display:none!important}
+ .pv2-neon-shell .pv2-neon-panel{break-inside:avoid}
+ .pv2-neon-shell .pv2-page-heading{display:block}
+ .pv2-neon-shell .pv2-breadcrumbs{display:none}
+ .pv2-neon-shell .pv2-neon-activity{color:#222!important}
+}
