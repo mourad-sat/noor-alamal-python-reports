@@ -46,8 +46,9 @@ def test_center_specific_form_only_contains_center_tracks(client):
         form = response.text.split(
             '<h2>إضافة حصة إلى استعمال الزمن الأسبوعي', 1
         )[1].split('</section>', 1)[0]
-        assert f'<option value="{expected}"' in form
-        assert f'<option value="{hidden}"' not in form
+        track_select = form.split('<select name="track_id">', 1)[1].split('</select>', 1)[0]
+        assert f'<option value="{expected}"' in track_select
+        assert f'<option value="{hidden}"' not in track_select
 
 
 def test_coordinator_cannot_access_other_center_and_instructor_cannot_manage(client):
