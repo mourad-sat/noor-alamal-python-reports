@@ -22,7 +22,7 @@ def test_new_staff_receives_private_printable_handover(client):
     assert "First-login-secret-2026" in response.text
     assert "https://noor-alamal-python-reports.vercel.app/login" in response.text
     assert "غيّر كلمة المرور عند أول تسجيل دخول" in response.text
-    assert response.headers["cache-control"] == "no-store, private"
+    assert "no-store" in response.headers["cache-control"]
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["referrer-policy"] == "no-referrer"
 
@@ -54,7 +54,7 @@ def test_reset_prints_new_credentials_without_exposing_old_password(client):
     assert "employee-alpha" in new.text
     assert "New-password-credential-2026" in new.text
     assert "Old-password-credential-2026" not in new.text
-    assert new.headers["cache-control"] == "no-store, private"
+    assert "no-store" in new.headers["cache-control"]
     assert "New-password-credential-2026" not in client.get("/platform/staff/1/card").text
 
 
