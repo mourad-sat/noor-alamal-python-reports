@@ -68,7 +68,13 @@
       input.focus();
     });
   }
+  function initializeTimetablePrinting() {
+    document.querySelectorAll("[data-print-timetable]").forEach(function (button) {
+      button.addEventListener("click", function () { window.print(); });
+    });
+  }
   function onReady() {
+    initializeTimetablePrinting();
     initializeQuickSearchShortcut();
     document.querySelectorAll("[data-nav-filter]").forEach(initialize);
     document.querySelectorAll("[data-table-filter]").forEach(initializeTableFilter);

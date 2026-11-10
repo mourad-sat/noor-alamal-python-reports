@@ -1523,40 +1523,170 @@ def validate_schedule_slot(db: Session, track_id: int, staff_id: int,
     return slot
 
 
+WEEKDAY_NAMES = ("الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد")
+
+
+def center_weekly_grid(center: Center, slots: list[Slot], tracks: dict,
+                       staff: dict) -> str:
+    """Seven-day timetable for one center; never mix centers or one-off sessions."""
+    weekdays = []
+    recurring = [slot for slot in slots if not slot.canceled and slot.specific_date is None
+                 and slot.center_id == center.id]
+    for index, weekday in enumerate(WEEKDAY_NAMES):
+        day_slots = sorted(
+            (slot for slot in recurring if slot.weekday == index),
+            key=lambda item: (item.starts_at, item.ends_at, item.id),
+        )
+        cards = "".join(
+            '<article class="pv2-weekly-entry">'
+            f'<time>{e(slot.starts_at)}–{e(slot.ends_at)}</time>'
+            f'<strong>{e(slot.subject)}</strong>'
+            f'<span>{e(tracks[slot.track_id].name)}</span>'
+            f'<small>{e(staff[slot.staff_id].full_name)}</small>'
+            '</article>'
+            for slot in day_slots
+        )
+        weekdays.append(
+            f'<div class="pv2-weekly-day"><h3>{weekday}</h3>'
+            + (cards or '<p class="pv2-weekly-empty">لا توجد حصص</p>')
+            + '</div>'
+        )
+    return (
+        '<section class="pv2-weekly-print-area" aria-label="استعمال الزمن الأسبوعي">'
+        '<div class="pv2-weekly-title">'
+        f'<h2>استعمال الزمن الأسبوعي — {e(center.name)}</h2>'
+        '<p>الجمعية: نور الأمل · الحصص الأسبوعية المتكررة حسب المسلك والمؤطر</p>'
+        '</div><div class="pv2-weekly-grid">' + "".join(weekdays) + '</div>'
+        '</section>'
+    )
+
+
 @app.get("/platform/schedule",response_class=HTMLResponse)
-def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
-    csrf=request.session["csrf"];ensure_data(db)
-    slots=[s for s in db.scalars(select(Slot).order_by(Slot.weekday,Slot.starts_at)).all()
-           if center_allowed(user,s.center_id) and (user["role"] in ("admin","coordinator") or s.staff_id==user["id"])]
+def schedule_page(request:Request, center_id:int|None=None,
+                  db:Session=Depends(get_db),user=Depends(actor)):
+    csrf=request.session["csrf"]
+    ensure_data(db)
+    centers = center_options(db, user)
+    allowed_center_ids = {id for id, _name in centers}
+    if center_id is not None and center_id not in allowed_center_ids:
+        raise HTTPException(403, "لا يحق لك الاطلاع على استعمال زمن هذا المركز")
+    if center_id is None and centers:
+        center_id = centers[0][0]
+    center = db.get(Center, center_id) if center_id is not None else None
+
+    # Query only one authorized center; educators only see their own sessions.
+    slots = db.scalars(
+        select(Slot).where(Slot.center_id == center_id)
+        .order_by(Slot.weekday, Slot.starts_at)
+    ).all() if center is not None else []
+    if user["role"] not in ("admin", "coordinator"):
+        slots = [slot for slot in slots if slot.staff_id == user["id"]]
+    slot_tracks = by_id(db, Track, (slot.track_id for slot in slots))
+    slot_staff = by_id(db, Staff, (slot.staff_id for slot in slots))
+    selection = "".join(
+        f'<a class="pv2-center-tab" href="/platform/schedule?center_id={id}"'
+        + (' aria-current="page"' if id == center_id else '') +
+        f'>{e(name)}</a>'
+        for id, name in centers
+    )
+    header = (
+        '<section class="pv2-center-select no-print">'
+        '<h2>استعمال الزمن الخاص بكل مركز</h2>'
+        '<p class="subtle">اختَر المركز لعرض حصصه الأسبوعية وتدبيرها بشكل مستقل.</p>'
+        '<nav class="pv2-center-tabs" aria-label="اختيار المركز">'
+        + (selection or '<p>لا توجد مراكز متاحة لحسابك.</p>') + '</nav></section>'
+    )
+    if center is None:
+        return page(request, user, "استعمال الزمن الأسبوعي", header)
+    print_button = (
+        '<div class="pv2-weekly-print-actions no-print">'
+        '<button type="button" data-print-timetable>طباعة استعمال الزمن / حفظ PDF</button>'
+        '</div>'
+    )
+    body = header + print_button + center_weekly_grid(
+        center, slots, slot_tracks, slot_staff,
+    )
+    # Exceptional, canceled and past revisions remain accessible separately.
     rows=[]
-    slot_centers=by_id(db,Center,(item.center_id for item in slots))
-    slot_tracks=by_id(db,Track,(item.track_id for item in slots))
-    slot_staff=by_id(db,Staff,(item.staff_id for item in slots))
-    for s in slots:
-        c=slot_centers[s.center_id];t=slot_tracks[s.track_id];staff=slot_staff[s.staff_id]
-        action=form("/platform/sessions",csrf,field("slot_id","رقم الحصة",value=s.id)+field("held_on","التاريخ","date"),"فتح الحصة") if not s.canceled else "ملغاة"
-        if user["role"] in ("admin", "coordinator") and not s.canceled:
-            action += f' <a class="button" href="/platform/schedule/{s.id}/edit">تعديل الحصة</a>'
-            action+=form(f"/platform/schedule/{s.id}/cancel-day",csrf,
-                field("held_on","تاريخ الحصة الملغاة","date")+
-                area("reason","سبب الإلغاء / التأجيل المعلل"),
-                "إلغاء حصة واحدة دون احتساب الغياب")
-        rows.append([e(c.name),e(t.name),e(s.subject),e("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()[s.weekday]),
-                     e(s.starts_at+"–"+s.ends_at),e(staff.full_name),action])
-    body='<section><h2>الجدول الأسبوعي وحصص الاستثناء</h2>'+table(["المركز","المسلك","المادة","اليوم","الساعة","المؤطر","العمل"],rows)+'</section>'
+    for slot in slots:
+        track=slot_tracks[slot.track_id]
+        teacher=slot_staff[slot.staff_id]
+        action = (
+            form("/platform/sessions", csrf,
+                 field("slot_id", "رقم الحصة", value=slot.id)
+                 + field("held_on", "تاريخ الحصة", "date"), "فتح الحصة")
+            if not slot.canceled else "مؤرشفة / ملغاة"
+        )
+        if user["role"] in ("admin", "coordinator") and not slot.canceled:
+            action += (
+                f' <a class="button" href="/platform/schedule/{slot.id}/edit">'
+                'تعديل الحصة</a>'
+            )
+            action += form(
+                f"/platform/schedule/{slot.id}/cancel-day", csrf,
+                field("held_on", "تاريخ الإلغاء", "date") +
+                area("reason", "سبب الإلغاء / التأجيل المعلل"),
+                "إلغاء حصة واحدة دون احتساب الغياب",
+            )
+        rows.append([
+            e(track.name), e(slot.subject), WEEKDAY_NAMES[slot.weekday],
+            e(slot.starts_at+"–"+slot.ends_at),
+            e(teacher.full_name),
+            "استثنائية" if slot.specific_date else
+            ("مؤرشفة / ملغاة" if slot.canceled else "أسبوعية"),
+            action,
+        ])
+    body += (
+        '<section class="pv2-weekly-details no-print">'
+        '<h2>تفاصيل الحصص وتعديلاتها</h2>'
+        '<p class="subtle">تظهر هنا الحصص الاستثنائية والمؤرشفة أيضاً؛ '
+        'الجدول الأسبوعي أعلاه يعرض الحصص المتكررة النشطة فقط.</p>'
+        + table(["المسلك","المادة","اليوم","الساعة","المؤطر","النوع","الإجراء"],rows)
+        + '</section>'
+    )
     if user["role"] in ("admin", "coordinator"):
-        staff=db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
-        body=('<section><h2>إضافة حصة إلى استعمال الزمن الأسبوعي · منع التعارض بين المراكز والمسالك</h2>'+form("/platform/schedule",csrf,
-          choose("track_id","مسلك المركز",tracks_options(db,user))+
-          choose("staff_id","المؤطر",[(s.id,s.full_name) for s in staff if s.role in ("instructor","educator")])+
-          choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
-          choose("weekday","اليوم",list(enumerate("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split())))+
-          field("starts_at","من","time")+field("ends_at","إلى","time")+
-          field("specific_date","تاريخ استثنائي (اتركه فارغًا للجدول الأسبوعي)","date",False)+
-          area("reason","مبرر البرمجة / التعديل"),"إضافة الحصة")+'</section><section><h2>عطلة أو إغلاق استثنائي</h2>'+
-          form("/platform/closures",csrf,choose("center_id","المركز",center_options(db,user))+
-          field("closed_on","اليوم المغلق","date")+area("reason","سبب الإغلاق"),"إلغاء حصص هذا اليوم")+'</section>'+body)
-    return page(request,user,"الحصص والجداول",body)
+        staff = db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
+        center_tracks = [
+            (track_id, title)
+            for track_id, title in tracks_options(db, user)
+            if db.get(Track, track_id).center_id == center.id
+        ]
+        if center_tracks:
+            body += (
+                '<section class="pv2-weekly-edit no-print">'
+                f'<h2>إضافة حصة إلى استعمال الزمن الأسبوعي — {e(center.name)}</h2>'
+                + form("/platform/schedule", csrf,
+                    choose("track_id","مسلك المركز",center_tracks)
+                    + choose("staff_id","المؤطر",[
+                        (person.id, person.full_name) for person in staff
+                        if person.role in ("instructor", "educator")
+                    ])
+                    + choose("subject","المادة",[("مهني","التكوين المهني")] +
+                        [(subject, subject) for subject in SUBJECTS])
+                    + choose("weekday","اليوم",list(enumerate(WEEKDAY_NAMES)))
+                    + field("starts_at","من","time")
+                    + field("ends_at","إلى","time")
+                    + field("specific_date","تاريخ استثنائي (اختياري)","date",False)
+                    + area("reason","مبرر البرمجة / التعديل"),"إضافة الحصة"
+                ) + '</section>'
+            )
+        else:
+            body += (
+                '<section class="pv2-weekly-edit no-print">'
+                '<p>لا توجد مسالك بهذا المركز. أضف مسلكاً أولاً.</p></section>'
+            )
+        body += (
+            '<section class="pv2-weekly-edit no-print">'
+            '<h2>عطلة أو إغلاق استثنائي للمركز</h2>'
+            + form("/platform/closures", csrf,
+                '<input type="hidden" name="center_id" value="' + str(center.id) + '">'
+                + field("closed_on","اليوم المغلق","date")
+                + area("reason","سبب الإغلاق"),
+                "إلغاء حصص هذا اليوم")
+            + '</section>'
+        )
+    return page(request,user,"استعمال الزمن الأسبوعي",body)
+
 
 @app.post("/platform/schedule")
 def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(),staff_id:int=Form(),
