@@ -52,7 +52,7 @@ def test_dashboard_has_metrics_shortcuts_and_center_overview(monkeypatch):
     assert 'class="pv2 pv2-dashboard"' in html
     assert 'class="pv2-neon-metrics"' in html
     assert 'class="pv2-neon-charts"' in html
-    assert 'class="pv2-neon-ring"' in html
+    assert 'class="pv2-neon-ring pv2-neon-ring--empty"' in html
     assert 'class="pv2-neon-actions"' in html
     assert 'data-dashboard-theme-toggle' in html
     assert "حصص الغياب المعلقة" in html
