@@ -304,3 +304,19 @@
 @media(max-width:1040px){.pv2-review-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.pv2-review-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.pv2-review-stat{padding:12px}.pv2-review-actions{min-width:175px}}
 @media print{.pv2-review-actions,.pv2-review-filter,.pv2-review-create{display:none!important}.pv2-review-stat{break-inside:avoid}}
+
+
+/* Mobile roster: labelled cards, comfortable controls, and no iOS focus zoom. */
+@media(max-width:700px){
+.pv2 input,.pv2 select,.pv2 textarea{font-size:16px}
+.pv2 td a:not(.button){display:inline-block;padding:7px 2px}
+.pv2 .table-cards{border:0;overflow:visible;background:transparent}
+.pv2 .table-cards table{min-width:0;background:transparent}
+.pv2 .table-cards thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.pv2 .table-cards tbody tr{display:block;background:#fff;border:1px solid var(--pv-border);border-radius:11px;margin:0 0 10px;padding:4px 0}
+.pv2 .table-cards tbody tr[hidden]{display:none}
+.pv2 .table-cards td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:1px dashed #e4ebf1;padding:9px 13px}
+.pv2 .table-cards td:last-child{border-bottom:0}
+.pv2 .table-cards td:before{content:attr(data-label);flex:0 0 34%;font-weight:700;font-size:12px;color:#2a5873}
+.pv2 .table-cards td[colspan]:before{content:none}
+}
