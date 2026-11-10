@@ -36,16 +36,15 @@ def test_review_page_hides_return_and_delete_actions_by_role(monkeypatch):
 
     class DB:
         def scalars(self, query):
-            return SimpleNamespace(all=lambda: [
+            entity = query.column_descriptions[0]["entity"]
+            rows = {
+                SessionDay: [SimpleNamespace(id=9, slot_id=7, held_on="2026-11-09")],
+                Slot: [SimpleNamespace(id=7, subject="الرياضيات", center_id=1)],
+            }.get(entity, [
                 SimpleNamespace(id=51, status="submitted", session_id=9,
                                 author_id=2, subject="عنوان تقرير", review_comment="")
             ])
-        def get(self, model, item_id):
-            if model is SessionDay:
-                return SimpleNamespace(id=9, slot_id=7, held_on="2026-11-09")
-            if model is Slot:
-                return SimpleNamespace(id=7, subject="الرياضيات", center_id=1)
-            raise AssertionError("Unexpected model")
+            return SimpleNamespace(all=lambda: rows)
     request = Request({
         "type": "http", "method": "GET", "path": "/platform/reports",
         "raw_path": b"/platform/reports", "query_string": b"",
