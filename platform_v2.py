@@ -1053,6 +1053,9 @@ def staff_credential_handover(staff: Staff, temporary_password: str, db: Session
   .credential-slip h2{font-size:16px}
 }
 """
+    markup = markup.replace(
+        '<head>', '<head><meta name="referrer" content="no-referrer">', 1
+    )
     markup = markup.replace("</style>", styles + "</style>", 1)
     markup = markup.replace(
         "</div></body></html>", "</div>" + credential_slip + "</body></html>", 1
