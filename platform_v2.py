@@ -746,7 +746,10 @@ def staff_page(request: Request, db: Session = Depends(get_db), user=Depends(act
     add = form("/platform/staff", csrf,
         field("username", "اسم المستخدم") + field("full_name", "الاسم الكامل") +
         choose("role", "الدور", [(k, v) for k, v in ROLE_LABELS.items() if k != "admin"]) +
-        field("password", "كلمة مرور أولية (12 حرفًا على الأقل)", "password"), "إنشاء حساب")
+        field("password", "كلمة مرور أولية (12 حرفًا على الأقل)", "password") +
+        '<input type="hidden" name="print_credentials" value="1">' +
+        '<p class="subtle">بعد إنشاء الحساب ستفتح بطاقة تسليم قابلة للطباعة فيها اسم المستخدم وكلمة المرور الأولية. احفظها PDF أو سلّمها للموظف مباشرة؛ لن يمكن عرض نفس كلمة المرور لاحقًا.</p>',
+        "إنشاء الحساب وطباعة بيانات الدخول")
     assign = form("/platform/assign", csrf,
         choose("staff_id", "الموظف", [(s.id, s.full_name) for s in staff]) +
         choose("center_id", "المركز", center_options(db, user)) +
@@ -779,6 +782,7 @@ def staff_page(request: Request, db: Session = Depends(get_db), user=Depends(act
 @app.post("/platform/staff")
 def create_staff(request: Request, token: str = Form(alias="_csrf"), username: str = Form(),
                  full_name: str = Form(), role: str = Form(), password: str = Form(),
+                 print_credentials: bool = Form(False),
                  db: Session = Depends(get_db), user=Depends(actor)):
     require_role(user, "admin")
     assert_csrf(request, token)
@@ -795,6 +799,8 @@ def create_staff(request: Request, token: str = Form(alias="_csrf"), username: s
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "اسم المستخدم موجود")
+    if print_credentials:
+        return staff_credential_handover(s, password, db)
     return redirect("/platform/staff")
 
 
@@ -815,7 +821,10 @@ def edit_staff_page(staff_id: int, request: Request, db: Session = Depends(get_d
     note = ('<p class="subtle">يمكن تغيير مركز المنسق هنا. تغيير الدور يحتاج أولاً إلغاء الإسناد القديم، '
             'ولا يسمح به إذا كانت للموظف أعمال موثقة. المكوّن والمنشط تُدار مسالكهما من قسم إسناد العمل.</p>')
     password_form = form(f"/platform/staff/{s.id}/password", request.session["csrf"],
-        field("password", "كلمة مرور جديدة (12 حرفًا على الأقل)", "password"), "إعادة تعيين كلمة المرور")
+        field("password", "كلمة مرور جديدة (12 حرفًا على الأقل)", "password") +
+        '<input type="hidden" name="print_credentials" value="1">' +
+        '<p class="subtle">بعد إعادة التعيين يمكن طباعة بطاقة تسليم جديدة. لن تظهر كلمة المرور القديمة.</p>',
+        "إعادة تعيين كلمة المرور وطباعة بيانات الدخول")
     body = (f'<section><h2>تعديل بيانات: {e(s.full_name)}</h2>{note}{form_html}</section>'
             f'<section><h2>كلمة المرور</h2>{password_form}</section>'
             '<p><a class="button" href="/platform/staff">العودة إلى الموظفين</a></p>')
@@ -1001,6 +1010,66 @@ body{margin:0;padding:0;background:white}
 <div class="cards">""" + cards_html + "</div></body></html>")
 
 
+def staff_credential_handover(staff: Staff, temporary_password: str, db: Session) -> HTMLResponse:
+    """One-time printable professional card + detachable login handover.
+
+    The plaintext temporary password exists only in this immediate POST response;
+    ordinary card GETs, DB records and audit logs never contain it.
+    """
+    ordinary = staff_cards_html([staff], db)
+    markup = ordinary.body.decode("utf-8")
+    credential_slip = (
+        '<section class="credential-slip" aria-label="بيانات الدخول الأولية">'
+        '<h2>بيانات الدخول للموظف — تسليم خاص وسري</h2>'
+        '<p>هذه الورقة مخصصة لصاحب الحساب فقط، ويجب عدم تعليقها أو تصويرها علنًا.</p>'
+        '<div class="credential-row"><span>الاسم الكامل</span>'
+        f'<strong>{e(staff.full_name)}</strong></div>'
+        '<div class="credential-row"><span>اسم المستخدم</span>'
+        f'<strong dir="ltr">{e(staff.username)}</strong></div>'
+        '<div class="credential-row"><span>كلمة المرور الأولية / الجديدة</span>'
+        f'<strong dir="ltr">{e(temporary_password)}</strong></div>'
+        '<div class="credential-row"><span>رابط المنصة</span>'
+        '<strong dir="ltr">https://noor-alamal-python-reports.vercel.app/login</strong></div>'
+        '<p class="credential-warning">غيّر كلمة المرور عند أول تسجيل دخول '
+        'من قسم «تغيير كلمة المرور». إذا ضاعت، اطلب من الإدارة إعادة تعيينها؛ '
+        'لا يمكن استرجاع كلمة المرور السابقة.</p>'
+        '</section>'
+    )
+    styles = """
+.credential-slip{
+  box-sizing:border-box;direction:rtl;flex:0 0 100%;width:min(100%,170mm);
+  margin-top:14mm;background:white;border:2px dashed #4f7e98;
+  border-radius:12px;padding:10mm;break-inside:avoid;page-break-inside:avoid
+}
+.credential-slip h2{font-size:17px;margin:0 0 4mm;color:#163a53}
+.credential-slip p{font-size:12px;line-height:1.8;color:#38566a}
+.credential-row{display:flex;align-items:baseline;gap:8mm;border-bottom:1px solid #dce7ee;
+  padding:3mm 0;overflow-wrap:anywhere}
+.credential-row span{width:43mm;flex-shrink:0;font-size:12px;color:#395a70}
+.credential-row strong{font-size:13px;unicode-bidi:isolate;overflow-wrap:anywhere}
+.credential-warning{color:#a53737!important;font-weight:bold}
+@media print{
+  .credential-slip{width:100%;margin-top:8mm;border-color:#666;print-color-adjust:exact}
+  .credential-slip h2{font-size:16px}
+}
+"""
+    markup = markup.replace("</style>", styles + "</style>", 1)
+    markup = markup.replace(
+        "</div></body></html>", "</div>" + credential_slip + "</body></html>", 1
+    )
+    markup = markup.replace(
+        "تظهر المعلومات المهنية التي أدخلها صاحب البطاقة، ولا تظهر كلمات المرور.",
+        "بيانات الدخول ظاهرة في ورقة التسليم مرة واحدة فقط. احفظها PDF وسلّمها بسرية.",
+        1,
+    )
+    return HTMLResponse(markup, headers={
+        "Cache-Control": "no-store, private",
+        "Pragma": "no-cache",
+        "Referrer-Policy": "no-referrer",
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+    })
+
+
 @app.get("/platform/staff/cards", response_class=HTMLResponse)
 def all_staff_cards(db: Session = Depends(get_db), user=Depends(actor)):
     require_role(user, "admin")
@@ -1036,7 +1105,8 @@ def toggle_staff(staff_id: int, request: Request, token: str = Form(alias="_csrf
 
 @app.post("/platform/staff/{staff_id}/password")
 def change_staff_password(staff_id: int, request: Request, token: str = Form(alias="_csrf"),
-                          password: str = Form(), db: Session = Depends(get_db), user=Depends(actor)):
+                          password: str = Form(), print_credentials: bool = Form(False),
+                          db: Session = Depends(get_db), user=Depends(actor)):
     require_role(user, "admin")
     assert_csrf(request, token)
     s = db.get(Staff, staff_id)
@@ -1046,6 +1116,8 @@ def change_staff_password(staff_id: int, request: Request, token: str = Form(ali
     s.session_version += 1
     log(db, user, "password_reset", "staff", s.id)
     db.commit()
+    if print_credentials:
+        return staff_credential_handover(s, password, db)
     return redirect("/platform/staff/{}/edit".format(s.id))
 
 
