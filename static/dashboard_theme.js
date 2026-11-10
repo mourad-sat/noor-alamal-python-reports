@@ -1,8 +1,8 @@
-/* Dashboard-only appearance preference; never processes navigation or learner data. */
+/* Portal appearance preference; never processes navigation or learner data. */
 (function () {
   "use strict";
   function initDashboardTheme() {
-    var root = document.querySelector(".pv2-dashboard");
+    var root = document.querySelector(".pv2-neon-shell");
     var toggle = document.querySelector("[data-dashboard-theme-toggle]");
     if (!root || !toggle) return;
     var preference = null;
