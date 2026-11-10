@@ -11,11 +11,12 @@ from starlette.requests import Request
 
 class SelectorDB:
     def scalars(self, statement):
-        return SimpleNamespace(all=lambda: [
-            SimpleNamespace(id=7, center_id=1, year_id=2, name="مسلك تجريبي"),
-        ])
-    def get(self, model, key):
-        return SimpleNamespace(label="2026/2027")
+        entity = statement.column_descriptions[0]["entity"]
+        if entity is platform_v2.Year:
+            rows = [SimpleNamespace(id=2, label="2026/2027")]
+        else:
+            rows = [SimpleNamespace(id=7, center_id=1, year_id=2, name="مسلك تجريبي")]
+        return SimpleNamespace(all=lambda: rows)
 
 
 def test_selector_has_track_cards_without_learner_data(monkeypatch):
