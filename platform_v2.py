@@ -136,9 +136,20 @@ def choose(name, label, values, selected=None):
         for value, title in pairs
     ) + '</select></label>'
 
-def table(headers, rows):
-    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
-    return '<div class="table-scroll"><table><thead><tr>' + "".join(f"<th>{e(h)}</th>" for h in headers) + "</tr></thead><tbody>" + (body or f'<tr><td colspan="{len(headers)}">لا توجد بيانات بعد.</td></tr>') + "</tbody></table></div>"
+def table(headers, rows, cards=False):
+    """Render a table, optionally as labeled cards on small screens."""
+    labels = [e(h) for h in headers]
+    body = "".join(
+        "<tr>" + "".join(
+            f'<td data-label="{labels[i] if i < len(labels) else ""}">{cell}</td>'
+            for i, cell in enumerate(row)) + "</tr>" for row in rows
+    )
+    wrapper = "table-scroll table-cards" if cards else "table-scroll"
+    return (f'<div class="{wrapper}"><table><thead><tr>' +
+            "".join(f"<th>{label}</th>" for label in labels) +
+            "</tr></thead><tbody>" +
+            (body or f'<tr><td colspan="{len(headers)}">لا توجد بيانات بعد.</td></tr>') +
+            "</tbody></table></div>")
 
 def page(request, user, title, body):
     menu = [
@@ -239,13 +250,27 @@ def page(request, user, title, body):
 </div></div></body></html>''')
 
 
+def by_id(db: Session, model, ids) -> dict:
+    """Batch lookup by primary key, safely returning an empty mapping for no IDs."""
+    wanted = {item for item in ids if item is not None}
+    if not wanted:
+        return {}
+    return {row.id: row for row in db.scalars(
+        select(model).where(model.id.in_(wanted))
+    ).all()}
+
+
 def center_options(db, user):
     rows = db.scalars(select(Center).order_by(Center.id)).all()
     return [(c.id, c.name) for c in rows if center_allowed(user, c.id)]
 
 def tracks_options(db, user):
-    rows = db.scalars(select(Track).order_by(Track.center_id, Track.name)).all()
-    return [(t.id, f"{t.name} · {db.get(Center,t.center_id).name} · {db.get(Year,t.year_id).label}") for t in rows if center_allowed(user,t.center_id)]
+    rows = [t for t in db.scalars(
+        select(Track).order_by(Track.center_id, Track.name)
+    ).all() if center_allowed(user, t.center_id)]
+    centers = by_id(db, Center, (t.center_id for t in rows))
+    years = by_id(db, Year, (t.year_id for t in rows))
+    return [(t.id, f"{t.name} · {centers[t.center_id].name} · {years[t.year_id].label}") for t in rows]
 
 def ensure_data(db):
     if not db.scalar(select(func.count()).select_from(Center)):
@@ -359,7 +384,9 @@ def years_page(request:Request, db:Session=Depends(get_db), user=Depends(actor))
     yrows=[[e(y.label),e(y.starts_on),e(y.ends_on),e("مؤرشفة" if y.archived else "مفعلة" if y.active else "غير مفعلة"),
         (form(f"/platform/years/{y.id}/activate",csrf,"","تفعيل")+
          form(f"/platform/years/{y.id}/archive",csrf,area("reason","مبرر الأرشفة"),"أرشفة")) if not y.archived else "مؤرشفة"] for y in years]
-    trows=[[e(db.get(Year,t.year_id).label),e(db.get(Center,t.center_id).name),e(t.name)] for t in tracks]
+    track_years = by_id(db, Year, (t.year_id for t in tracks))
+    track_centers = by_id(db, Center, (t.center_id for t in tracks))
+    trows=[[e(track_years[t.year_id].label),e(track_centers[t.center_id].name),e(t.name)] for t in tracks]
     return page(request,user,"السنوات والمسالك",f"<section><h2>السنوات</h2>{yform}{table(['السنة','من','إلى','الحالة','الإجراء'],yrows)}</section><section><h2>المسالك المستقلة لكل مركز</h2>{tform}{table(['السنة','المركز','المسلك'],trows)}</section>")
 
 @app.post("/platform/years")
@@ -799,12 +826,13 @@ def learners_page(request: Request, track_id: int | None = None,
             '<p class="subtle">لن تظهر أسماء المستفيدين حتى تدخل إلى المسلك الذي تريده. '
             'اختر المركز ثم اضغط على اسم المسلك لعرض لائحته فقط.</p></section>'
         ]
+        track_years = by_id(db, Year, (t.year_id for t in visible_tracks))
         for center_id, center_name in center_options(db, user):
             center_tracks = [track for track in visible_tracks if track.center_id == center_id]
             buttons = "".join(
                 '<a class="pv2-track-link" '
                 f'href="/platform/learners?track_id={track.id}">'
-                f'{e(track.name)} <small>({e(db.get(Year,track.year_id).label)})</small></a>'
+                f'{e(track.name)} <small>({e(track_years[track.year_id].label)})</small></a>'
                 for track in center_tracks
             )
             sections.append(
@@ -825,15 +853,19 @@ def learners_page(request: Request, track_id: int | None = None,
         .order_by(Enrollment.id.desc()).limit(800)
     ).all()
     rows = []
+    enrollment_ids = [en.id for en in enrolls]
+    learners_by_id = by_id(db, Learner, (en.learner_id for en in enrolls))
+    pending_by_enrollment = dict(db.execute(
+        select(Attendance.enrollment_id, func.count()).where(
+            Attendance.enrollment_id.in_(enrollment_ids),
+            Attendance.status == "absent", Attendance.permit_id.is_(None)
+        ).group_by(Attendance.enrollment_id)
+    ).all()) if enrollment_ids else {}
+    excluded_ids = disciplined_enrollment_ids(db, enrollment_ids)
     for en in enrolls:
-        learner = db.get(Learner, en.learner_id)
-        pending = db.scalar(
-            select(func.count()).select_from(Attendance).where(
-                Attendance.enrollment_id == en.id, Attendance.status == "absent",
-                Attendance.permit_id.is_(None)
-            )
-        ) or 0
-        disciplinary = disciplinary_status(db, en)
+        learner = learners_by_id[en.learner_id]
+        pending = pending_by_enrollment.get(en.id, 0)
+        disciplinary = en.id in excluded_ids
         status = ('<span class="danger">غياب معلق</span>' if pending
                   else '<span class="good">لا غياب معلق</span>')
         if disciplinary:
@@ -848,9 +880,11 @@ def learners_page(request: Request, track_id: int | None = None,
             ' · اللائحة مقتصرة على هذا المسلك فقط.</p>'
             '<a class="button" href="/platform/learners">العودة إلى اختيار المسالك</a>'
             '</section>')
-    body += '<section class="pv2-roster-list"><h2>لائحة المستفيدين</h2>' + table(
-        ["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows
-    ) + '</section>'
+    body += ('<section class="pv2-roster-list"><h2>لائحة المستفيدين</h2>'
+             + report_filter_box("learners-roster-table", "بحث بالاسم أو الرمز")
+             + '<div id="learners-roster-table">'
+             + table(["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows, cards=True)
+             + '</div></section>')
     if user["role"] in ("admin", "coordinator") and not year.archived:
         csrf = request.session["csrf"]
         registration_fields = (
@@ -882,6 +916,21 @@ def disciplinary_status(db:Session,en:Enrollment,at:date|None=None):
             # At the end date, a separate reasoned return authorization remains mandatory.
             return True
     return False
+
+def disciplined_enrollment_ids(db: Session, enrollment_ids, at: date | None = None) -> set:
+    """Batch the existing disciplinary status rule without changing its meaning."""
+    ids = list(enrollment_ids)
+    if not ids:
+        return set()
+    at = at or date.today()
+    records = db.scalars(select(Discipline).where(
+        Discipline.enrollment_id.in_(ids),
+        Discipline.status.in_(("effective", "early_pending"))
+    )).all()
+    return {record.enrollment_id for record in records
+            if not record.return_authorized and
+            (record.excluded_from is None or record.excluded_from <= at)}
+
 
 @app.post("/platform/learners")
 def learner_create(request:Request,token:str=Form(alias="_csrf"),full_name:str=Form(),gender:str=Form(""),
@@ -1086,8 +1135,11 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
     slots=[s for s in db.scalars(select(Slot).order_by(Slot.weekday,Slot.starts_at)).all()
            if center_allowed(user,s.center_id) and (user["role"] in ("admin","coordinator") or s.staff_id==user["id"])]
     rows=[]
+    slot_centers=by_id(db,Center,(item.center_id for item in slots))
+    slot_tracks=by_id(db,Track,(item.track_id for item in slots))
+    slot_staff=by_id(db,Staff,(item.staff_id for item in slots))
     for s in slots:
-        c=db.get(Center,s.center_id);t=db.get(Track,s.track_id);staff=db.get(Staff,s.staff_id)
+        c=slot_centers[s.center_id];t=slot_tracks[s.track_id];staff=slot_staff[s.staff_id]
         action=form("/platform/sessions",csrf,field("slot_id","رقم الحصة",value=s.id)+field("held_on","التاريخ","date"),"فتح الحصة") if not s.canceled else "ملغاة"
         if user["role"]=="coordinator" and not s.canceled:
             action+=form(f"/platform/schedule/{s.id}/cancel-day",csrf,
@@ -1475,9 +1527,11 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
     recent = db.scalars(select(SessionReport).order_by(SessionReport.id.desc()).limit(600)).all()
     visible = []
     rows = []
+    sessions_by_id = by_id(db, SessionDay, (r.session_id for r in recent))
+    slots_by_id = by_id(db, Slot, (item.slot_id for item in sessions_by_id.values()))
     for r in recent:
-        session = db.get(SessionDay, r.session_id)
-        slot = db.get(Slot, session.slot_id)
+        session = sessions_by_id[r.session_id]
+        slot = slots_by_id[session.slot_id]
         if not center_allowed(user, slot.center_id):
             continue
         if user["role"] in ("instructor", "educator") and r.author_id != user["id"]:
@@ -1537,6 +1591,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
     if user["role"] in ("admin", "coordinator"):
         summaries = db.scalars(select(CenterReport).order_by(CenterReport.id.desc()).limit(200)).all()
         summaryrows = []
+        summary_centers = by_id(db, Center, (item.center_id for item in summaries))
         for item in summaries:
             if not center_allowed(user, item.center_id):
                 continue
@@ -1557,7 +1612,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
                            "تأكيد الإرجاع") + '</details>'
                 )
             summaryrows.append([
-                e(db.get(Center, item.center_id).name), e(item.period_type),
+                e(summary_centers[item.center_id].name), e(item.period_type),
                 e(item.period_start), e(item.period_end),
                 e(STATUS_LABELS.get(item.status, item.status)),
                 '<div class="pv2-review-actions">' + "".join(actions) + '</div>' if actions else "—",
