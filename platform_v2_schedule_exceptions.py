@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import app, get_db
-from platform_v2 import actor, assert_csrf, coordinator, log
+from platform_v2 import actor, assert_csrf, schedule_manager, log
 from platform_v2_models import (
     Attendance, Closure, Notification, SessionDay, SessionReport, Slot,
 )
@@ -27,7 +27,7 @@ def cancel_slot_day(slot_id:int,request:Request,
     assert_csrf(request,token)
     slot=db.get(Slot,slot_id)
     if not slot:raise HTTPException(404,"الحصة غير موجودة")
-    coordinator(user,slot.center_id)
+    schedule_manager(user,slot.center_id)
     if slot.canceled or held_on.weekday()!=slot.weekday or (
         slot.specific_date and slot.specific_date!=held_on
     ):
