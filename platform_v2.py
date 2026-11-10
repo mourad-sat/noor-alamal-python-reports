@@ -155,7 +155,8 @@ def page(request, user, title, body):
     menu = [
         ("الرئيسية", "/platform"), ("السنوات والمسالك", "/platform/years"),
         ("المستفيدون", "/platform/learners"), ("جدولة الحصص", "/platform/schedule"),
-        ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"), ("النقط", "/platform/grades"),
+        ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"),
+        ("إحصائيات الحضور", "/platform/attendance/stats"), ("النقط", "/platform/grades"),
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
         ("التنبيهات", "/platform/notifications"),
     ]
@@ -260,6 +261,20 @@ def by_id(db: Session, model, ids) -> dict:
     ).all()}
 
 
+def visible_tracks(db: Session, user) -> list:
+    """Return only tracks that the actor may access for learner-level pages."""
+    rows = db.scalars(select(Track).order_by(
+        Track.center_id, Track.year_id, Track.name
+    )).all()
+    return [
+        track for track in rows
+        if center_allowed(user, track.center_id) and (
+            user["role"] in ("admin", "coordinator")
+            or any(assignment.track_id == track.id for assignment in user["assignments"])
+        )
+    ]
+
+
 def center_options(db, user):
     rows = db.scalars(select(Center).order_by(Center.id)).all()
     return [(c.id, c.name) for c in rows if center_allowed(user, c.id)]
@@ -302,6 +317,34 @@ def home(request: Request, db: Session=Depends(get_db), user=Depends(actor)):
             Enrollment.center_id.in_(center_ids), Notice.status == "draft",
         )
     ) or 0
+    if user["role"] in ("admin", "coordinator"):
+        todo_count = db.scalar(
+            select(func.count()).select_from(SessionReport)
+            .join(SessionDay, SessionReport.session_id == SessionDay.id)
+            .join(Slot, SessionDay.slot_id == Slot.id)
+            .where(
+                Slot.center_id.in_(center_ids),
+                SessionReport.status == "submitted",
+            )
+        ) or 0
+        todo_text = f"{todo_count} تقرير حصة بانتظار المصادقة"
+    else:
+        todo_count = db.scalar(
+            select(func.count()).select_from(SessionReport).where(
+                SessionReport.author_id == user["id"],
+                SessionReport.status == "returned",
+            )
+        ) or 0
+        todo_text = f"{todo_count} تقرير أُعيد إليك للتصحيح"
+    todo = (
+        '<section class="pv2-overview pv2-todo" aria-label="مهام بانتظارك">'
+        '<a class="pv2-quick-link" href="/platform/reports">'
+        '<span class="pv2-quick-icon" aria-hidden="true">!</span>'
+        f'<span><strong>{e(todo_text)}</strong>'
+        '<small>اضغط لفتح قائمة التقارير</small></span>'
+        '<span class="pv2-quick-arrow" aria-hidden="true">←</span>'
+        '</a></section>'
+    ) if todo_count else ""
     centers = db.scalars(select(Center).where(Center.id.in_(center_ids)).order_by(Center.id)).all()
     tracks = db.scalars(select(Track).where(Track.center_id.in_(center_ids))).all()
     center_totals = {c.id: 0 for c in centers}
@@ -370,7 +413,7 @@ def home(request: Request, db: Session=Depends(get_db), user=Depends(actor)):
         f'<div class="pv2-centers-grid">{center_cards or "<p>لا توجد مراكز متاحة.</p>"}</div>'
         '</section>'
     )
-    return page(request, user, "لوحة القيادة", intro + metrics + shortcuts + centers_section)
+    return page(request, user, "لوحة القيادة", intro + todo + metrics + shortcuts + centers_section)
 
 @app.get("/platform/years", response_class=HTMLResponse)
 def years_page(request:Request, db:Session=Depends(get_db), user=Depends(actor)):
@@ -812,23 +855,16 @@ def learners_page(request: Request, track_id: int | None = None,
                   db: Session = Depends(get_db), user=Depends(actor)):
     """Choose a center and track first; never show an unfiltered learner roster."""
     ensure_data(db)
-    visible_tracks = db.scalars(select(Track).order_by(Track.center_id, Track.year_id, Track.name)).all()
-    visible_tracks = [
-        track for track in visible_tracks
-        if center_allowed(user, track.center_id) and (
-            user["role"] in ("admin", "coordinator")
-            or any(a.track_id == track.id for a in user["assignments"])
-        )
-    ]
+    allowed_tracks = visible_tracks(db, user)
     if track_id is None:
         sections = [
             '<section class="pv2-roster-intro"><h2>اختيار المركز والمسلك</h2>'
             '<p class="subtle">لن تظهر أسماء المستفيدين حتى تدخل إلى المسلك الذي تريده. '
             'اختر المركز ثم اضغط على اسم المسلك لعرض لائحته فقط.</p></section>'
         ]
-        track_years = by_id(db, Year, (t.year_id for t in visible_tracks))
+        track_years = by_id(db, Year, (t.year_id for t in allowed_tracks))
         for center_id, center_name in center_options(db, user):
-            center_tracks = [track for track in visible_tracks if track.center_id == center_id]
+            center_tracks = [track for track in allowed_tracks if track.center_id == center_id]
             buttons = "".join(
                 '<a class="pv2-track-link" '
                 f'href="/platform/learners?track_id={track.id}">'
@@ -842,7 +878,7 @@ def learners_page(request: Request, track_id: int | None = None,
             )
         return page(request, user, "المستفيدون حسب المركز والمسلك", "".join(sections))
 
-    selected = next((track for track in visible_tracks if track.id == track_id), None)
+    selected = next((track for track in allowed_tracks if track.id == track_id), None)
     if selected is None:
         # Never leak learner counts, names or metadata for other centers/tracks.
         raise HTTPException(403, "هذا المسلك غير متاح لحسابك.")
