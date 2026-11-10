@@ -855,7 +855,7 @@ def learners_page(request: Request, track_id: int | None = None,
                   db: Session = Depends(get_db), user=Depends(actor)):
     """Choose a center and track first; never show an unfiltered learner roster."""
     ensure_data(db)
-    allowed_tracks = allowed_tracks(db, user)
+    allowed_tracks = visible_tracks(db, user)
     if track_id is None:
         sections = [
             '<section class="pv2-roster-intro"><h2>اختيار المركز والمسلك</h2>'
