@@ -69,5 +69,5 @@ def test_dashboard_theme_is_scoped_to_home_only():
     assert 'if current_path == "/platform"' in source
     assert 'pv2-dashboard' in source
     assert 'data-dashboard-theme-toggle' in source
-    js = (Path(__file__).resolve().parents[1] / "static" / "platform_ui.js").read_text()
+    js = (Path(__file__).resolve().parents[1] / "static" / "dashboard_theme.js").read_text()
     assert 'noor-dashboard-appearance' in js
