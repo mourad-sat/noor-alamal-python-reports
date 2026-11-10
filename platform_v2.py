@@ -228,6 +228,12 @@ def page(request, user, title, body):
     ) if current_path == "/platform" else ""
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
+    sidebar_profile = (
+        '<div class="pv2-side-profile">'
+        '<span class="pv2-side-avatar" aria-hidden="true">●</span>'
+        f'<span><strong>{username}</strong><small>{role_label}</small></span>'
+        '</div>'
+    ) if current_path == "/platform" else ""
     csrf = post_fields(request.session.get("csrf", ""))
     return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -248,6 +254,7 @@ def page(request, user, title, body):
 {nav_search}
 <nav id="pv2-desktop-links" class="pv2-links" aria-label="التنقل الرئيسي">{nav}</nav>
 <p class="pv2-nav-no-results" data-empty-for="pv2-desktop-links" hidden>ما لقيناش قسم مطابق.</p>
+{sidebar_profile}
 </aside>
 <div class="pv2-content-wrap">
 <header class="pv2-topbar">
@@ -368,7 +375,7 @@ def dashboard_neon_charts(snapshot):
     present_percent = (present * 100 / recorded) if recorded else 0
     late_percent = (late * 100 / recorded) if recorded else 0
     ring = (
-        '<div class="pv2-neon-ring" role="img" '
+        f'<div class="pv2-neon-ring{" pv2-neon-ring--empty" if not recorded else ""}" role="img" '
         f'aria-label="حاضر: {present}، متأخر: {late}، غائب: {absent}" '
         f'style="--ring-present:{present_percent:.2f}%;'
         f'--ring-late:{present_percent + late_percent:.2f}%">'
