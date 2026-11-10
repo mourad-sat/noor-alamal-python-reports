@@ -151,6 +151,21 @@ def table(headers, rows, cards=False):
             (body or f'<tr><td colspan="{len(headers)}">لا توجد بيانات بعد.</td></tr>') +
             "</tbody></table></div>")
 
+def neon_icon(name: str) -> str:
+    """Render a fixed local icon, never interpolating untrusted names in markup."""
+    allowed = {
+        "home", "users", "user-plus", "calendar", "chart", "document",
+        "documents", "settings", "bell", "shield", "star", "clock",
+        "activity", "folder", "logout", "check", "search", "moon",
+    }
+    if name not in allowed:
+        name = "folder"
+    return (
+        '<svg class="pv2-icon" aria-hidden="true" focusable="false">'
+        f'<use href="/static/neon_icons.svg#{name}"></use></svg>'
+    )
+
+
 def page(request, user, title, body):
     menu = [
         ("الرئيسية", "/platform"), ("السنوات والمسالك", "/platform/years"),
@@ -177,12 +192,14 @@ def page(request, user, title, body):
     current_path = request.url.path.rstrip("/") or "/"
     nav_items = []
     nav_icons = {
-        "/platform": "⌂", "/platform/learners": "♙",
-        "/platform/schedule": "▦", "/platform/reports": "▤",
-        "/platform/aggregates": "▥", "/platform/attendance/stats": "◉",
-        "/platform/grades": "✦", "/platform/staff": "♧",
-        "/platform/notifications": "♧", "/platform/notices": "▣",
-        "/platform/discipline": "⚑", "/platform/settings": "⚙",
+        "/platform": "home", "/platform/learners": "users",
+        "/platform/schedule": "calendar", "/platform/reports": "document",
+        "/platform/aggregates": "chart", "/platform/attendance/stats": "activity",
+        "/platform/grades": "star", "/platform/staff": "users",
+        "/platform/notifications": "bell", "/platform/notices": "documents",
+        "/platform/discipline": "shield", "/platform/settings": "settings",
+        "/platform/years": "documents", "/platform/profile": "users",
+        "/platform/password": "shield", "/platform/audit": "clock",
     }
     for label, url in menu:
         # Keep parent navigation highlighted for detail/edit pages.
@@ -192,7 +209,7 @@ def page(request, user, title, body):
         current = ' aria-current="page"' if active else ""
         nav_items.append(
             f'<a href="{url}"{current}>'
-            f'<span class="pv2-nav-icon" aria-hidden="true">{nav_icons.get(url, "◫")}</span>'
+            f'<span class="pv2-nav-icon" aria-hidden="true">{neon_icon(nav_icons.get(url, "folder"))}</span>'
             f'<span>{e(label)}</span></a>'
         )
     nav = "".join(nav_items)
@@ -219,12 +236,17 @@ def page(request, user, title, body):
     dashboard_top_tools = (
         '<div class="pv2-neon-tools no-print">'
         '<button class="pv2-theme-toggle" type="button" '
-        'data-dashboard-theme-toggle aria-label="تبديل مظهر لوحة القيادة" '
+        'data-dashboard-theme-toggle aria-label="تبديل مظهر المنصة" '
         'aria-pressed="true" title="تبديل المظهر">☾</button>'
         '<label class="pv2-neon-search-label" for="pv2-dashboard-search">بحث سريع</label>'
         '<input class="pv2-neon-search" id="pv2-dashboard-search" type="search" '
-        'placeholder="بحث سريع في الأقسام..." data-nav-filter="pv2-desktop-links">'
+        'placeholder="بحث سريع في الأقسام... (Ctrl+K)" data-nav-filter="pv2-desktop-links">'
         '</div>'
+    )
+    notice_link = (
+        '<a class="pv2-header-notifications" href="/platform/notifications" '
+        'aria-label="فتح التنبيهات" title="التنبيهات">'
+        + neon_icon("bell") + '</a>'
     )
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
@@ -263,6 +285,7 @@ def page(request, user, title, body):
 <div class="pv2-topbar-title"><p class="pv2-heading-sub">منصة التسيير الإداري</p><strong>{e(title)}</strong></div>
 {dashboard_top_tools}
 <div class="pv2-account">
+{notice_link}
 <span class="pv2-user">{username} · {role_label}</span>
 <form class="pv2-logout" method="post" action="/logout">{csrf}<button type="submit">تسجيل الخروج</button></form>
 </div>
@@ -492,7 +515,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     def metric(kind, symbol, label, value, hint):
         return (
             f'<div class="pv2-neon-metric pv2-neon-metric--{kind}">'
-            f'<span class="pv2-neon-metric-icon" aria-hidden="true">{symbol}</span>'
+            f'<span class="pv2-neon-metric-icon" aria-hidden="true">{neon_icon(symbol)}</span>'
             f'<strong>{e(value)}</strong><span>{e(label)}</span>'
             f'<small>{e(hint)}</small></div>'
         )
@@ -506,10 +529,10 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     )
     metrics = (
         '<div class="pv2-neon-metrics" aria-label="مؤشرات لوحة القيادة">'
-        + metric("learners", "♙", "المستفيدون", len(enrollments), "ضمن نطاق صلاحياتك")
-        + metric("attendance", "↗", "نسبة الحضور", week_rate, "من سجلات 6 أيام")
-        + metric("programs", "▦", "البرامج", len(tracks), "المسالك المتاحة")
-        + metric("sessions", "▣", "الحصص", snapshot["sessions"], "حصص غير ملغاة خلال 6 أيام")
+        + metric("learners", "users", "المستفيدون", len(enrollments), "ضمن نطاق صلاحياتك")
+        + metric("attendance", "chart", "نسبة الحضور", week_rate, "من سجلات 6 أيام")
+        + metric("programs", "documents", "البرامج", len(tracks), "المسالك المتاحة")
+        + metric("sessions", "calendar", "الحصص", snapshot["sessions"], "حصص غير ملغاة خلال 6 أيام")
         + '</div>'
     )
     todo = (
@@ -517,22 +540,22 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         f'<strong>{e(todo_text)}</strong><span>عرض التقارير والمراجعة ←</span></a>'
     ) if todo_count else ""
     actions = [
-        ("تسجيل الحضور", "▦", "/platform/schedule", "green"),
-        ("تقرير جديد", "▤", "/platform/reports", "blue"),
-        ("إضافة مستفيد", "♙", "/platform/learners", "purple"),
+        ("تسجيل الحضور", "calendar", "/platform/schedule", "green"),
+        ("تقرير جديد", "document", "/platform/reports", "blue"),
+        ("إضافة مستفيد", "user-plus", "/platform/learners", "purple"),
     ]
     quick = (
         '<section class="pv2-neon-panel pv2-neon-quick"><h2>إجراءات سريعة</h2>'
         '<div class="pv2-neon-actions">'
         + "".join(
             f'<a class="pv2-neon-action pv2-neon-action--{kind}" href="{url}">'
-            f'<span aria-hidden="true">{icon}</span><strong>{e(label)}</strong></a>'
+            f'<span aria-hidden="true">{neon_icon(icon)}</span><strong>{e(label)}</strong></a>'
             for label, icon, url, kind in actions
         ) + '</div></section>'
     )
     recent = "".join(
         '<div class="pv2-neon-activity">'
-        '<span class="pv2-neon-check" aria-hidden="true">✓</span>'
+        '<span class="pv2-neon-check" aria-hidden="true">' + neon_icon("check") + '</span>'
         f'<span>سجلات حضور مسجلة في {e(day.isoformat())}</span>'
         f'<small>{count} سجل</small></div>'
         for day, count in snapshot["recent"]
