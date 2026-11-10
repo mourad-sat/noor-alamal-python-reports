@@ -228,6 +228,7 @@ def page(request, user, title, body):
     ) if current_path == "/platform" else ""
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
+    dashboard_script = '<script src="/static/dashboard_theme.js" defer></script>' if current_path == "/platform" else ""
     sidebar_profile = (
         '<div class="pv2-side-profile">'
         '<span class="pv2-side-avatar" aria-hidden="true">●</span>'
@@ -242,6 +243,7 @@ def page(request, user, title, body):
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/platform_ui.css">
 <script src="/static/platform_ui.js" defer></script>
+{dashboard_script}
 </head><body class="pv2{" pv2-dashboard" if current_path == "/platform" else ""}">
 <a class="pv2-skip" href="#main-content">تجاوز القائمة والوصول إلى المحتوى</a>
 <div class="pv2-layout">
