@@ -1467,6 +1467,62 @@ def slot_conflict(db:Session,slot:Slot):
         return other
     return None
 
+def schedule_manager(user, center_id: int):
+    """Allow admins to plan any center; coordinators only their assigned center."""
+    if user["role"] == "admin":
+        return
+    coordinator(user, center_id)
+
+
+def validate_schedule_slot(db: Session, track_id: int, staff_id: int,
+                           subject: str, weekday: int, starts_at: str,
+                           ends_at: str, specific_date: date | None,
+                           reason: str, user, existing: Slot | None = None) -> Slot:
+    track = db.get(Track, track_id)
+    staff = db.get(Staff, staff_id)
+    if not track or not staff:
+        raise HTTPException(422, "المسلك أو المؤطر غير موجود")
+    schedule_manager(user, track.center_id)
+    if existing:
+        schedule_manager(user, existing.center_id)
+    if not staff.enabled or staff.role not in ("instructor", "educator") or subject not in ("مهني", *SUBJECTS):
+        raise HTTPException(422, "المادة أو حساب المؤطر غير صحيح")
+    if ((staff.role == "instructor" and subject != "مهني") or
+        (staff.role == "educator" and subject not in SUBJECTS)):
+        raise HTTPException(422, "عدم تطابق التخصص")
+    if not any(
+        a.center_id == track.center_id and a.track_id == track.id
+        and a.subject == ("" if subject == "مهني" else subject)
+        for a in db.scalars(select(Assignment).where(
+            Assignment.staff_id == staff_id)).all()
+    ):
+        raise HTTPException(403, "هذا الموظف غير مكلف بهذا المسلك والمادة")
+    if (not 0 <= weekday <= 6 or not "00:00" <= starts_at < ends_at <= "23:59"
+        or (specific_date and specific_date.weekday() != weekday)):
+        raise HTTPException(422, "اليوم أو التوقيت غير صحيح")
+    if not 5 <= len(reason.strip()) <= 1000:
+        raise HTTPException(422, "يجب كتابة مبرر واضح للتعديل أو الإضافة")
+    slot = existing or Slot()
+    slot.year_id = track.year_id
+    slot.center_id = track.center_id
+    slot.track_id = track.id
+    slot.staff_id = staff_id
+    slot.subject = subject
+    slot.kind = "professional" if subject == "مهني" else "pedagogical"
+    slot.weekday = weekday
+    slot.starts_at = starts_at
+    slot.ends_at = ends_at
+    slot.specific_date = specific_date
+    slot.change_reason = reason.strip()
+    conflict = slot_conflict(db, slot)
+    if conflict:
+        cause = "المؤطر" if conflict.staff_id == slot.staff_id else "المسلك"
+        raise HTTPException(
+            409, f"تعارض في التوقيت: {cause} مرتبط بحصة رقم {conflict.id} في الوقت نفسه."
+        )
+    return slot
+
+
 @app.get("/platform/schedule",response_class=HTMLResponse)
 def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     csrf=request.session["csrf"];ensure_data(db)
@@ -1479,7 +1535,8 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
     for s in slots:
         c=slot_centers[s.center_id];t=slot_tracks[s.track_id];staff=slot_staff[s.staff_id]
         action=form("/platform/sessions",csrf,field("slot_id","رقم الحصة",value=s.id)+field("held_on","التاريخ","date"),"فتح الحصة") if not s.canceled else "ملغاة"
-        if user["role"]=="coordinator" and not s.canceled:
+        if user["role"] in ("admin", "coordinator") and not s.canceled:
+            action += f' <a class="button" href="/platform/schedule/{s.id}/edit">تعديل الحصة</a>'
             action+=form(f"/platform/schedule/{s.id}/cancel-day",csrf,
                 field("held_on","تاريخ الحصة الملغاة","date")+
                 area("reason","سبب الإلغاء / التأجيل المعلل"),
@@ -1487,9 +1544,9 @@ def schedule_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)
         rows.append([e(c.name),e(t.name),e(s.subject),e("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()[s.weekday]),
                      e(s.starts_at+"–"+s.ends_at),e(staff.full_name),action])
     body='<section><h2>الجدول الأسبوعي وحصص الاستثناء</h2>'+table(["المركز","المسلك","المادة","اليوم","الساعة","المؤطر","العمل"],rows)+'</section>'
-    if user["role"]=="coordinator":
+    if user["role"] in ("admin", "coordinator"):
         staff=db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
-        body=('<section><h2>برمجة حصة · منع التعارض آليًا عبر المركزين</h2>'+form("/platform/schedule",csrf,
+        body=('<section><h2>إضافة حصة إلى استعمال الزمن الأسبوعي · منع التعارض بين المراكز والمسالك</h2>'+form("/platform/schedule",csrf,
           choose("track_id","مسلك المركز",tracks_options(db,user))+
           choose("staff_id","المؤطر",[(s.id,s.full_name) for s in staff if s.role in ("instructor","educator")])+
           choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
@@ -1506,27 +1563,100 @@ def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(
        subject:str=Form(),weekday:int=Form(),starts_at:str=Form(),ends_at:str=Form(),
        specific_date:date|None=Form(None),reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
     assert_csrf(request,token)
-    track=db.get(Track,track_id);staff=db.get(Staff,staff_id)
-    if not track or not staff:raise HTTPException(422,"المسلك أو المؤطر غير موجود")
-    coordinator(user,track.center_id)
-    if staff.role not in ("instructor","educator") or subject not in ("مهني",*SUBJECTS):raise HTTPException(422,"المادة غير صحيحة")
-    if (staff.role=="instructor" and subject!="مهني") or (staff.role=="educator" and subject not in SUBJECTS):raise HTTPException(422,"عدم تطابق التخصص")
-    if not any(a.center_id==track.center_id and a.track_id==track.id and a.subject==("" if subject=="مهني" else subject)
-               for a in db.scalars(select(Assignment).where(Assignment.staff_id==staff_id)).all()):
-        raise HTTPException(403,"هذا الموظف غير مكلف بهذا المسلك والمادة")
-    if not 0<=weekday<=6 or not "00:00"<=starts_at<ends_at<="23:59" or (specific_date and specific_date.weekday()!=weekday):
-        raise HTTPException(422,"اليوم أو التوقيت غير صحيح")
-    if len(reason.strip())<5:raise HTTPException(422,"التبرير إلزامي لتغيير الجدولة")
-    slot=Slot(year_id=track.year_id,center_id=track.center_id,track_id=track.id,staff_id=staff_id,
-              subject=subject,kind="professional" if subject=="مهني" else "pedagogical",
-              weekday=weekday,starts_at=starts_at,ends_at=ends_at,specific_date=specific_date,change_reason=reason.strip()[:1000])
-    other=slot_conflict(db,slot)
-    if other:
-        conflict = "المؤطر" if other.staff_id==slot.staff_id else "المسلك"
-        raise HTTPException(409,f"تعارض في التوقيت: {conflict} مرتبط بحصة رقم {other.id} في الوقت نفسه.")
+    slot = validate_schedule_slot(
+        db, track_id, staff_id, subject, weekday, starts_at, ends_at,
+        specific_date, reason, user,
+    )
     db.add(slot);db.flush();log(db,user,"schedule","slot",slot.id,reason)
     db.add(Notification(staff_id=staff_id,message=f"حصة جديدة: {subject}، يوم {weekday} الساعة {starts_at}",target="/platform/schedule"))
     db.commit();return redirect("/platform/schedule")
+
+@app.get("/platform/schedule/{slot_id:int}/edit", response_class=HTMLResponse)
+def edit_schedule_page(slot_id: int, request: Request,
+                       db: Session = Depends(get_db), user=Depends(actor)):
+    slot = db.get(Slot, slot_id)
+    if not slot:
+        raise HTTPException(404, "الحصة غير موجودة")
+    schedule_manager(user, slot.center_id)
+    if slot.canceled:
+        raise HTTPException(409, "الحصة ملغاة")
+    if db.scalar(select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)):
+        return page(
+            request, user, "تعديل استعمال الزمن",
+            '<section><h2>الحصة لها سجل سابق</h2>'
+            '<p>لا يمكن تغيير توقيت هذه الحصة مباشرة لأنها مرتبطة بسجل يومي. '
+            'احتفظ بالسجل التاريخي وأنشئ حصة جديدة للتوقيت القادم، '
+            'مع توثيق سبب التعديل.</p>'
+            '<a class="button" href="/platform/schedule">العودة إلى استعمال الزمن</a></section>',
+        )
+    available_staff = db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
+    days = list(enumerate("الإثنين الثلاثاء الأربعاء الخميس الجمعة السبت الأحد".split()))
+    fields = (
+        choose("track_id", "المسلك", tracks_options(db, user), selected=slot.track_id)
+        + choose("staff_id", "المؤطر", [
+            (person.id, person.full_name) for person in available_staff
+            if person.role in ("instructor", "educator")
+        ], selected=slot.staff_id)
+        + choose("subject", "المادة", [("مهني", "التكوين المهني")] +
+                 [(subject, subject) for subject in SUBJECTS], selected=slot.subject)
+        + choose("weekday", "اليوم", days, selected=slot.weekday)
+        + field("starts_at", "من", "time", value=slot.starts_at)
+        + field("ends_at", "إلى", "time", value=slot.ends_at)
+        + field("specific_date", "تاريخ استثنائي (اختياري)", "date", False,
+                slot.specific_date.isoformat() if slot.specific_date else "")
+        + area("reason", "سبب تعديل استعمال الزمن (إلزامي)")
+    )
+    body = (
+        '<section><h2>تعديل الحصة الأسبوعية</h2>'
+        '<p class="subtle">التعديل مسموح فقط للحصص التي ليس لها سجلات يومية. '
+        'سيتم فحص التعارضات وإخبار المؤطر بالتغيير.</p>'
+        + form(f"/platform/schedule/{slot.id}/edit", request.session["csrf"],
+               fields, "حفظ تعديل استعمال الزمن")
+        + '</section>'
+    )
+    return page(request, user, "تعديل استعمال الزمن", body)
+
+
+@app.post("/platform/schedule/{slot_id:int}/edit")
+def edit_schedule(slot_id: int, request: Request,
+                  token: str = Form(alias="_csrf"), track_id: int = Form(),
+                  staff_id: int = Form(), subject: str = Form(), weekday: int = Form(),
+                  starts_at: str = Form(), ends_at: str = Form(),
+                  specific_date: date | None = Form(None), reason: str = Form(),
+                  db: Session = Depends(get_db), user=Depends(actor)):
+    assert_csrf(request, token)
+    slot = db.get(Slot, slot_id)
+    if not slot:
+        raise HTTPException(404, "الحصة غير موجودة")
+    schedule_manager(user, slot.center_id)
+    if slot.canceled:
+        raise HTTPException(409, "لا يمكن تعديل حصة ملغاة")
+    if db.scalar(select(SessionDay.id).where(SessionDay.slot_id == slot.id).limit(1)):
+        raise HTTPException(409, "لا يمكن تعديل حصة لها سجلات يومية؛ أنشئ حصة جديدة.")
+    previous_staff_id = slot.staff_id
+    previous = (
+        f"{slot.track_id}/{slot.staff_id}/{slot.subject}/"
+        f"{slot.weekday}/{slot.starts_at}-{slot.ends_at}"
+    )
+    validate_schedule_slot(
+        db, track_id, staff_id, subject, weekday,
+        starts_at, ends_at, specific_date, reason, user, existing=slot,
+    )
+    db.add(Notification(
+        staff_id=slot.staff_id,
+        message=f"تم تعديل استعمال الزمن: {slot.subject}، يوم {slot.weekday} الساعة {slot.starts_at}",
+        target="/platform/schedule",
+    ))
+    if previous_staff_id != slot.staff_id:
+        db.add(Notification(
+            staff_id=previous_staff_id,
+            message="تم تغيير الحصة المسندة إليك في استعمال الزمن. راجع الجدول الحالي.",
+            target="/platform/schedule",
+        ))
+    log(db, user, "schedule_edit", "slot", slot.id, f"{previous} — {reason.strip()}")
+    db.commit()
+    return redirect("/platform/schedule")
+
 
 @app.post("/platform/closures")
 def create_closure(request:Request,token:str=Form(alias="_csrf"),center_id:int=Form(),closed_on:date=Form(),
