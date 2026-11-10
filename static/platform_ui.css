@@ -358,10 +358,16 @@
   width:24px;min-width:24px;display:inline-flex;align-items:center;
   justify-content:center;font-weight:800;font-size:23px;line-height:1
 }
-.pv2-dashboard .pv2-sidebar::after{
-  content:"مدير المنصة";margin-top:auto;border-top:1px solid #2a3b50;
-  padding:22px 13px 8px;color:#e7eef8;text-align:center;font-size:14px;font-weight:700
+.pv2-dashboard .pv2-side-profile{
+  display:flex;align-items:center;gap:13px;margin-top:auto;padding:20px 8px 7px;
+  border-top:1px solid #2a3b50;min-height:75px
 }
+.pv2-dashboard .pv2-side-avatar{
+  display:grid;place-items:center;width:43px;height:43px;flex:0 0 43px;
+  background:#263c58;border:1px solid #425b7a;border-radius:50%;color:#cfdfef
+}
+.pv2-dashboard .pv2-side-profile strong{display:block;font-size:13px;color:#fff}
+.pv2-dashboard .pv2-side-profile small{display:block;font-size:11px;color:#9eb2ce}
 .pv2-dashboard .pv2-content-wrap{
   background:radial-gradient(ellipse at 47% 16%,#12243b 0%,#0c172a 46%,#0a1425 100%);
   min-height:100vh
@@ -530,3 +536,5 @@
 .pv2-dashboard[data-dashboard-appearance="light"] .pv2-neon-intro p{color:#47667b}
 .pv2-dashboard[data-dashboard-appearance="light"] .pv2-neon-activity{color:#1d435e;border-color:#d0dee9}
 .pv2-dashboard[data-dashboard-appearance="light"] .pv2-neon-days{color:#49677e}
+
+.pv2-neon-ring--empty{background:#33475e}
