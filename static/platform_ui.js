@@ -46,7 +46,25 @@
     input.addEventListener("search", update);
     update();
   }
+  function initializeQuickSearchShortcut() {
+    document.addEventListener("keydown", function (event) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k") return;
+      var isMobile = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
+      var mobile = document.getElementById("pv2-mobile-filter");
+      var desktop = document.getElementById("pv2-dashboard-search");
+      var fallback = document.getElementById("pv2-nav-filter");
+      var input = isMobile ? mobile : (desktop || fallback);
+      if (!input) return;
+      if (isMobile) {
+        var panel = input.closest("details");
+        if (panel) panel.open = true;
+      }
+      event.preventDefault();
+      input.focus();
+    });
+  }
   function onReady() {
+    initializeQuickSearchShortcut();
     document.querySelectorAll("[data-nav-filter]").forEach(initialize);
     document.querySelectorAll("[data-table-filter]").forEach(initializeTableFilter);
   }
