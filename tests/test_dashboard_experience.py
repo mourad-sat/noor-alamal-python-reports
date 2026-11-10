@@ -49,7 +49,7 @@ def test_dashboard_has_metrics_shortcuts_and_center_overview(monkeypatch):
     })
     user = {"role": "coordinator", "name": "اختبار", "assignments": []}
     html = platform_v2.home(request, db=FakeDB(), user=user).body.decode()
-    assert 'class="pv2 pv2-dashboard"' in html
+    assert 'class="pv2 pv2-neon-shell pv2-dashboard"' in html
     assert 'class="pv2-neon-metrics"' in html
     assert 'class="pv2-neon-charts"' in html
     assert 'class="pv2-neon-ring pv2-neon-ring--empty"' in html
