@@ -882,3 +882,76 @@
  .pv2-neon-shell .pv2-neon-chart-blank small{background:#fff;color:#222}
  .pv2-neon-shell .pv2-nav-group{display:none!important}
 }
+
+
+/* Weekly timetable is specific to one authorized center. */
+.pv2-neon-shell .pv2-center-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.pv2-neon-shell .pv2-center-tab{
+  display:inline-flex;align-items:center;justify-content:center;min-height:48px;
+  padding:10px 17px;border-radius:12px;border:1px solid #3b5676;
+  color:#d7e9f9;background:#172c46;text-decoration:none;font-weight:700
+}
+.pv2-neon-shell .pv2-center-tab[aria-current="page"]{
+  background:linear-gradient(110deg,#452179,#6035a5);
+  border-color:#925cd5;color:#fff;box-shadow:0 4px 17px #29144e8a
+}
+.pv2-neon-shell .pv2-center-tab:hover{color:#fff;border-color:#5de9eb}
+.pv2-neon-shell .pv2-weekly-print-actions{display:flex;justify-content:flex-end}
+.pv2-neon-shell .pv2-weekly-print-area{overflow:hidden}
+.pv2-neon-shell .pv2-weekly-title h2{font-size:clamp(19px,1.7vw,26px)}
+.pv2-neon-shell .pv2-weekly-title p{font-size:13px;color:#bdd0e1}
+.pv2-neon-shell .pv2-weekly-grid{
+  display:grid;grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:9px;margin-top:22px
+}
+.pv2-neon-shell .pv2-weekly-day{min-width:0;border:1px solid #365475;border-radius:12px;background:#0c1e33;padding:10px}
+.pv2-neon-shell .pv2-weekly-day h3{
+  text-align:center;font-size:13px;margin:0 0 12px;padding-bottom:10px;
+  border-bottom:1px solid #3d566f;color:#d6eaff
+}
+.pv2-neon-shell .pv2-weekly-entry{
+  display:flex;flex-direction:column;gap:6px;min-width:0;
+  padding:11px 9px;margin-bottom:8px;border:1px solid #257c80;
+  border-right:3px solid #23dcd2;border-radius:9px;
+  background:linear-gradient(150deg,#103e45,#142b43);
+  overflow-wrap:anywhere;break-inside:avoid
+}
+.pv2-neon-shell .pv2-weekly-entry time{font-size:13px;font-weight:800;color:#5ceee9;direction:ltr;unicode-bidi:isolate;align-self:flex-start}
+.pv2-neon-shell .pv2-weekly-entry strong{color:#fff;font-size:13px}
+.pv2-neon-shell .pv2-weekly-entry span{color:#d6e5f6;font-size:12px}
+.pv2-neon-shell .pv2-weekly-entry small{color:#aac9d7;font-size:11px}
+.pv2-neon-shell .pv2-weekly-empty{font-size:12px;text-align:center;color:#8fa5bf;padding:14px 4px}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-day{background:#f5f9fc;border-color:#c6d9e5}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-day h3{color:#31536e}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-entry{background:#e8f7f5;color:#1a465b;border-color:#9adad8}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-entry strong{color:#163951}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-entry time{color:#05776f}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-entry span,
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-entry small{color:#496475}
+@media(max-width:1300px){.pv2-neon-shell .pv2-weekly-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:750px){.pv2-neon-shell .pv2-weekly-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.pv2-neon-shell .pv2-weekly-grid{grid-template-columns:minmax(0,1fr)}}
+@page timetable{size:A4 landscape;margin:10mm}
+@media print{
+  .pv2-weekly-print-area{page:timetable;display:block!important;break-before:auto}
+  .pv2-neon-shell .pv2-weekly-print-area,
+  .pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-print-area{
+    background:white!important;color:black!important;box-shadow:none!important;border:0!important;
+    padding:0!important;margin:0!important
+  }
+  .pv2-neon-shell .pv2-weekly-title h2,.pv2-neon-shell .pv2-weekly-title p{color:#111!important}
+  .pv2-neon-shell .pv2-weekly-grid{grid-template-columns:repeat(7,minmax(0,1fr));gap:3mm;margin:5mm 0}
+  .pv2-neon-shell .pv2-weekly-day{border:1px solid #bbb!important;background:#fff!important;padding:2mm}
+  .pv2-neon-shell .pv2-weekly-day h3{color:#111!important;border-color:#bbb;font-size:10px}
+  .pv2-neon-shell .pv2-weekly-entry{
+    padding:2mm;border:1px solid #aaa!important;border-right:2px solid #333!important;
+    background:white!important;box-shadow:none!important
+  }
+  .pv2-neon-shell .pv2-weekly-entry time,.pv2-neon-shell .pv2-weekly-entry strong,
+  .pv2-neon-shell .pv2-weekly-entry span,.pv2-neon-shell .pv2-weekly-entry small{
+    color:#111!important;font-size:9px
+  }
+  .pv2-neon-shell .pv2-weekly-empty{color:#444!important}
+  .pv2-neon-shell .pv2-center-select,.pv2-neon-shell .pv2-weekly-print-actions,
+  .pv2-neon-shell .pv2-weekly-details,.pv2-neon-shell .pv2-weekly-edit{display:none!important}
+}
