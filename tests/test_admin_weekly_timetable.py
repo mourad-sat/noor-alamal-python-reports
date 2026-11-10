@@ -41,7 +41,7 @@ def test_admin_cannot_assign_unassigned_staff_or_create_overlaps(client):
                  **values(track_id=2, starts_at="09:00", ends_at="11:00"))
     assert clash.status_code == 409
     different_center = post(client, "/platform/schedule/1/edit", csrf,
-                            **values(track_id=2, weekday=2,
+                            **values(track_id=2, staff_id=4, subject="الرياضيات", weekday=2,
                                      starts_at="12:00", ends_at="13:00"))
     assert different_center.status_code == 403
 
