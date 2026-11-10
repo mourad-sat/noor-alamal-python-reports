@@ -225,26 +225,26 @@ def page(request, user, title, body):
         '<input class="pv2-neon-search" id="pv2-dashboard-search" type="search" '
         'placeholder="بحث سريع في الأقسام..." data-nav-filter="pv2-desktop-links">'
         '</div>'
-    ) if current_path == "/platform" else ""
+    )
     username = e(user["name"])
     role_label = e(ROLE_LABELS[user["role"]])
-    dashboard_script = '<script src="/static/dashboard_theme.js" defer></script>' if current_path == "/platform" else ""
+    dashboard_script = '<script src="/static/dashboard_theme.js" defer></script>'
     sidebar_profile = (
         '<div class="pv2-side-profile">'
         '<span class="pv2-side-avatar" aria-hidden="true">●</span>'
         f'<span><strong>{username}</strong><small>{role_label}</small></span>'
         '</div>'
-    ) if current_path == "/platform" else ""
+    )
     csrf = post_fields(request.session.get("csrf", ""))
     return HTMLResponse(f'''<!doctype html><html lang="ar" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="{"#0b1426" if current_path == "/platform" else "#145b83"}">
+<meta name="theme-color" content="#0b1426">
 <title>{e(title)} | جمعية نور الأمل</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/platform_ui.css">
 <script src="/static/platform_ui.js" defer></script>
 {dashboard_script}
-</head><body class="pv2{" pv2-dashboard" if current_path == "/platform" else ""}">
+</head><body class="pv2 pv2-neon-shell{" pv2-dashboard" if current_path == "/platform" else ""}">
 <a class="pv2-skip" href="#main-content">تجاوز القائمة والوصول إلى المحتوى</a>
 <div class="pv2-layout">
 <aside class="pv2-sidebar" aria-label="القائمة الرئيسية">
