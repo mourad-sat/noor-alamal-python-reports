@@ -1667,7 +1667,9 @@ def schedule_page(request:Request, center_id:int|None=None,
                     + field("starts_at","من","time")
                     + field("ends_at","إلى","time")
                     + field("specific_date","تاريخ استثنائي (اختياري)","date",False)
-                    + area("reason","مبرر البرمجة / التعديل"),"إضافة الحصة"
+                    + '<label>مبرر البرمجة (إلزامي، 5 أحرف على الأقل)<textarea name="reason" rows="3" required minlength="5" maxlength="1000" aria-describedby="pv2-schedule-reason-hint"></textarea></label>'
+                    + '<p id="pv2-schedule-reason-hint" class="subtle">مثال: برمجة الحصص الأسبوعية المعتمدة للمركز.</p>',
+                    "إضافة الحصة"
                 ) + '</section>'
             )
         else:
@@ -1691,15 +1693,26 @@ def schedule_page(request:Request, center_id:int|None=None,
 @app.post("/platform/schedule")
 def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(),staff_id:int=Form(),
        subject:str=Form(),weekday:int=Form(),starts_at:str=Form(),ends_at:str=Form(),
-       specific_date:date|None=Form(None),reason:str=Form(),db:Session=Depends(get_db),user=Depends(actor)):
+       specific_date:date|None=Form(None),reason:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
     assert_csrf(request,token)
+    if len(reason.strip()) < 5:
+        content = (
+            '<section role="alert" class="pv2-schedule-error">'
+            '<h2>تعذرت إضافة الحصة</h2>'
+            '<p>سبب برمجة الحصة إلزامي؛ اكتب خمسة أحرف على الأقل، ثم أعد المحاولة.</p>'
+            '<p><a class="button" href="/platform/schedule">العودة إلى استعمال الزمن</a></p>'
+            '</section>'
+        )
+        response = page(request, user, "سبب البرمجة مطلوب", content)
+        response.status_code = 422
+        return response
     slot = validate_schedule_slot(
         db, track_id, staff_id, subject, weekday, starts_at, ends_at,
         specific_date, reason, user,
     )
     db.add(slot);db.flush();log(db,user,"schedule","slot",slot.id,reason)
     db.add(Notification(staff_id=staff_id,message=f"حصة جديدة: {subject}، يوم {weekday} الساعة {starts_at}",target="/platform/schedule"))
-    db.commit();return redirect("/platform/schedule")
+    db.commit();return redirect(f"/platform/schedule?center_id={slot.center_id}")
 
 @app.get("/platform/schedule/{slot_id:int}/edit", response_class=HTMLResponse)
 def edit_schedule_page(slot_id: int, request: Request,
