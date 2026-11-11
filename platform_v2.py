@@ -2020,7 +2020,19 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
         body += session_report_editor(s.id, request.session["csrf"], report, slot.subject)
     if report:
-        body+=f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p><p>{e(report.review_comment)}</p><p><a class="button" href="/platform/reports/{report.id}/attachments">مرفقات التقرير</a></p></section>'
+        print_action = (
+            f'<a class="button" href="/platform/reports/{report.id}/print-draft">'
+            'طباعة نسخة أولية غير معتمدة</a>'
+            if report.status in ("draft", "submitted", "returned") else
+            form(f"/platform/reports/{report.id}/print", request.session["csrf"], "",
+                 "طباعة التقرير الرسمي المعتمد")
+        )
+        body+=(
+            f'<section><p>حالة التقرير: {e(STATUS_LABELS.get(report.status,report.status))}</p>'
+            f'<p>{e(report.review_comment)}</p>'
+            f'<p><a class="button" href="/platform/reports/{report.id}/attachments">مرفقات التقرير</a> '
+            + print_action + '</p></section>'
+        )
     return page(request,user,"تدبير الحصة",body)
 
 def absence_notice(db:Session,en:Enrollment,held_on:date):
@@ -2184,10 +2196,15 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
         actions.append(
             f'<a class="button" href="/platform/reports/{r.id}/attachments">المرفقات</a>'
         )
-        if r.status == "approved":
+        if r.status in ("draft", "submitted", "returned"):
+            actions.append(
+                f'<a class="button" href="/platform/reports/{r.id}/print-draft">'
+                'طباعة نسخة أولية غير معتمدة</a>'
+            )
+        elif r.status == "approved":
             actions.append(
                 form(f"/platform/reports/{r.id}/print", csrf, "",
-                     "تقرير رسمي مع رمز تحقق")
+                     "طباعة التقرير الرسمي المعتمد مع رمز تحقق")
             )
         if user["role"] == "admin":
             actions.append(
