@@ -170,6 +170,7 @@ def page(request, user, title, body):
     menu = [
         ("الرئيسية", "/platform"), ("السنوات والمسالك", "/platform/years"),
         ("المستفيدون", "/platform/learners"), ("جدولة الحصص", "/platform/schedule"),
+        ("طباعة استعمال الزمن", "/platform/schedule/print"),
         ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"),
         ("إحصائيات الحضور", "/platform/attendance/stats"), ("النقط", "/platform/grades"),
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
@@ -193,7 +194,7 @@ def page(request, user, title, body):
     nav_items = []
     nav_icons = {
         "/platform": "home", "/platform/learners": "users",
-        "/platform/schedule": "calendar", "/platform/reports": "document",
+        "/platform/schedule": "calendar", "/platform/schedule/print": "calendar", "/platform/reports": "document",
         "/platform/aggregates": "chart", "/platform/attendance/stats": "activity",
         "/platform/grades": "star", "/platform/staff": "users",
         "/platform/notifications": "bell", "/platform/notices": "documents",
@@ -217,6 +218,7 @@ def page(request, user, title, body):
         ("الرئيسية", {"/platform"}),
         ("المستفيدون والتكوين", {
             "/platform/years", "/platform/learners", "/platform/schedule",
+            "/platform/schedule/print",
             "/platform/staff", "/platform/profile-completeness",
         }),
         ("الحضور والتقارير", {
@@ -1600,7 +1602,13 @@ def schedule_page(request:Request, center_id:int|None=None,
         return page(request, user, "استعمال الزمن الأسبوعي", header)
     print_button = (
         '<div class="pv2-weekly-print-actions no-print">'
-        '<button type="button" data-print-timetable>طباعة استعمال الزمن / حفظ PDF</button>'
+        '<a class="button" href="/platform/schedule/print?mode='
+        + ('staff&staff_id=' + str(user["id"]) if user["role"] in ("educator", "instructor")
+           else 'center&center_id=' + str(center.id))
+        + '">طباعة وفق النموذج الرسمي / حفظ PDF</a>'
+        '<a class="button" href="/platform/schedule/print">'
+        'جميع خيارات الطباعة (المركزان / المؤطر / المجموعة)</a>'
+        '<button type="button" data-print-timetable>طباعة العرض الحالي</button>'
         '</div>'
     )
     body = header + print_button + center_weekly_grid(
