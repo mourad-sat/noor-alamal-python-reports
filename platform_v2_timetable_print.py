@@ -93,6 +93,7 @@ def print_document(*, title: str, institution: str, year_label: str,
         '<title>استعمال الزمن — جمعية نور الأمل</title>'
         '<link rel="stylesheet" href="/static/timetable_print.css">'
         '<script defer src="/static/platform_ui.js"></script>'
+        '<script defer src="/static/timetable_print.js"></script>'
         '</head><body>'
         '<div class="print-controls no-print">'
         '<div class="print-control-heading"><strong>طباعة استعمال الزمن</strong>'
@@ -173,6 +174,12 @@ def print_timetable(request: Request, mode: str = "center",
                Staff.role.in_(("instructor", "educator")))
         .distinct().order_by(Staff.full_name)
     ).all() if allowed else []
+    if user["role"] in ("instructor", "educator"):
+        workers = [person for person in workers if person.id == user["id"]]
+        available_tracks = [track for track in available_tracks if any(
+            assignment.track_id == track.id for assignment in user["assignments"]
+        )]
+        tracks_by_id = {track.id: track for track in available_tracks}
     worker_by_id = {staff.id: staff for staff in workers}
     if user["role"] in ("instructor", "educator"):
         if mode != "staff" or staff_id not in (0, user["id"]):
@@ -282,9 +289,9 @@ def print_timetable(request: Request, mode: str = "center",
     controls = (
         '<form class="print-picker" action="/platform/schedule/print" method="get">'
         '<label>نوع الاستعمال<select name="mode">' + mode_opts + '</select></label>'
-        '<label>المركز<select name="center_id">' + center_opts + '</select></label>'
-        '<label>المكوّن / المنشّط<select name="staff_id">' + worker_opts + '</select></label>'
-        '<label>المجموعة / المسلك<select name="track_id">' + track_opts + '</select></label>'
+        '<label data-print-filter="center">المركز<select name="center_id">' + center_opts + '</select></label>'
+        '<label data-print-filter="staff">المكوّن / المنشّط<select name="staff_id">' + worker_opts + '</select></label>'
+        '<label data-print-filter="track">المجموعة / المسلك<select name="track_id">' + track_opts + '</select></label>'
         '<label>السنة الدراسية<select name="year_id">'
         + select_options([(y.id, y.label) for y in years], year.id if year else 0)
         + '</select></label><button type="submit">عرض استعمال الزمن</button>'
