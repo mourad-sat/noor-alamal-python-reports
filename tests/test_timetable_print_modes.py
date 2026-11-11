@@ -106,7 +106,8 @@ def test_instructor_only_prints_self_with_permitted_center_scoping(client):
     assert client.get("/platform/schedule/print?mode=all").status_code == 403
     assert client.get("/platform/schedule/print?mode=center&center_id=1").status_code == 403
     assert client.get("/platform/schedule/print?mode=staff&staff_id=4").status_code == 403
-    personal = client.get("/platform/schedule/print?mode=staff")
+    personal = client.get("/platform/schedule/print")
+    assert 'name="mode"' in personal.text
     assert personal.status_code == 200
     assert "08:30–10:30" in printed(personal.text)
     assert "13:30–15:30" in printed(personal.text)
