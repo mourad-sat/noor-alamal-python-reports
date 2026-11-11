@@ -1,0 +1,64 @@
+/* Timetable model supplied by the association: A4 portrait, framed RTL sheet,
+   identity table, weekday columns and two teaching periods. */
+:root{font-family:"Tajawal","Cairo","Noto Naskh Arabic",Tahoma,Arial,sans-serif;color:#111;background:#e9edf2}
+*{box-sizing:border-box}
+body{margin:0;direction:rtl}
+.print-controls{width:min(1100px,calc(100% - 28px));margin:18px auto 12px;background:#12243b;border:1px solid #2b4b66;border-radius:15px;color:#e9f6ff;padding:18px}
+.print-control-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.print-control-heading strong{font-size:20px}
+.print-controls a{color:#86edff}
+.print-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:13px;align-items:end}
+.print-picker label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}
+.print-picker select{width:100%;min-width:0;min-height:45px;background:#1b354f;border:1px solid #56718a;border-radius:9px;color:#fff;padding:8px;font-size:14px}
+.print-controls button{min-height:44px;padding:9px 20px;border:1px solid #3fbdbb;border-radius:9px;background:#167c78;color:#fff;cursor:pointer;font-size:14px;font-weight:800}
+.print-picker button{background:#51338d;border-color:#8258bc}
+.print-controls>button{margin-top:14px}
+.print-controls p{font-size:12px;color:#b1cfe4;line-height:1.7}
+.print-paper{width:210mm;max-width:calc(100% - 20px);min-height:297mm;margin:20px auto 35px;padding:8mm;background:#fff;box-shadow:0 12px 42px #08131f3a;direction:rtl}
+.print-frame{min-height:277mm;border:6px double #111;padding:10mm 7mm 9mm}
+.print-identity{width:100%;border-collapse:collapse;table-layout:fixed;font-weight:700;font-size:12px}
+.print-identity th,.print-identity td{border:1px solid #111;padding:6px 7px;vertical-align:middle;overflow-wrap:anywhere}
+.print-identity th{width:22%;background:#d6d6d6;text-align:right;font-size:13px}
+.print-identity td{width:28%;background:#fff;font-weight:500}
+.print-frame h1{text-align:center;font-weight:900;text-decoration:underline;font-size:29px;margin:26px 0 0;line-height:1.4}
+.print-frame h2{text-align:center;font-style:italic;text-decoration:underline;font-size:18px;margin:0 0 2px;font-weight:700}
+.print-subtitle{margin:0 0 17px;text-align:center;font-size:13px;font-weight:700}
+.print-week{border-collapse:collapse;table-layout:fixed;width:100%;direction:rtl;border:2px solid #111}
+.print-week th,.print-week td{border:1px solid #111;padding:5px 3px;vertical-align:top;overflow-wrap:anywhere}
+.print-week thead th{background:#d6d6d6;text-align:center;font-weight:800;font-size:12px;min-height:54px}
+.print-week thead th:first-child{width:13%;font-size:11px}
+.print-week thead sup{display:block;line-height:1.15;font-size:10px;text-decoration:underline}
+.print-week thead small{display:block;font-size:10px;line-height:1.45;font-weight:700;margin-top:3px;direction:rtl}
+.print-week tbody th{background:#d6d6d6;font-size:13px;font-weight:900;text-align:center;vertical-align:middle;width:13%;writing-mode:vertical-rl;transform:none;padding:15px 8px}
+.print-week tbody td{height:100mm;padding:4px;vertical-align:top}
+.print-week tbody tr.print-period-1 td:nth-of-type(odd),.print-week tbody tr.print-period-2 td:nth-of-type(even){background:#e2efd9}
+.print-week tbody tr.print-period-2 td{height:85mm}
+.print-lesson{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;padding:5px 3px;background:#ffffffd9;border:1px solid #a3b0a1;break-inside:avoid;line-height:1.32}
+.print-lesson .print-class{font-size:11px;font-weight:900}
+.print-lesson .print-time{font-size:10px;font-weight:800;white-space:nowrap;align-self:flex-start;unicode-bidi:isolate}
+.print-lesson span:not(.print-class):not(.print-time){font-size:9px;font-weight:600}
+.print-blank{display:block;min-height:18px;text-align:center;font-size:14px;color:#888}
+.print-footer{margin:15px 0 0;text-align:center;font-size:10px;color:#4d4d4d}
+@media(max-width:800px){
+  .print-paper{width:100%;padding:10px;min-height:auto}
+  .print-frame{min-height:0;padding:16px 10px}
+  .print-week tbody td{height:170px}
+  .print-week tbody tr.print-period-2 td{height:140px}
+  .print-week th,.print-week td{font-size:9px}
+  .print-identity{font-size:10px}
+}
+@page{size:A4 portrait;margin:0}
+@media print{
+  :root,body{background:#fff!important}
+  .no-print{display:none!important}
+  .print-paper{width:210mm!important;max-width:none;min-height:297mm;margin:0;padding:8mm;box-shadow:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .print-frame{min-height:277mm;padding:10mm 7mm 9mm}
+  .print-week tbody td{height:auto;min-height:70mm}
+  .print-week tbody tr.print-period-2 td{height:auto;min-height:65mm}
+  .print-week tbody tr{break-inside:avoid;page-break-inside:avoid}
+  .print-lesson{break-inside:avoid;page-break-inside:avoid}
+  .print-identity th,.print-week thead th,.print-week tbody th{background:#d6d6d6!important}
+  .print-week tbody tr.print-period-1 td:nth-of-type(odd),
+  .print-week tbody tr.print-period-2 td:nth-of-type(even){background:#e2efd9!important}
+  .print-lesson{background:#ffffffdf!important}
+}
