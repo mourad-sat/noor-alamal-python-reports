@@ -297,7 +297,10 @@ def render_mini_card(enrollment: Enrollment, learner: Learner, center: Center,
 .mini-bottom{{display:flex;align-items:center;justify-content:space-between;gap:2mm;
   padding:1mm 3mm;background:#e8f6ee;font-size:7px;color:#246c56;border-top:1px solid #c7e3d3}}
 .small-note{{max-width:210mm;margin:0 auto;color:#5e7889;font-size:12px;text-align:center}}
-@media print{{.mini-sheet{{width:100%;margin:0;max-width:none;padding:0;justify-content:flex-start}}
+/* Enlarge only the on-screen preview; preserve exact 85.6 x 54mm print size. */
+@media screen and (min-width:700px){{.mini-sheet{{zoom:1.5}}}}
+@media print{{.mini-sheet{{zoom:1}}
+.mini-sheet{{width:100%;margin:0;max-width:none;padding:0;justify-content:flex-start}}
 .mini-card{{box-shadow:none;border-color:#95adb8}}.small-note{{display:none}}}}
 </style></head><body>
 {toolbar(enrollment.id,"mini")}
@@ -317,7 +320,7 @@ def render_mini_card(enrollment: Enrollment, learner: Learner, center: Center,
 <footer class="mini-bottom"><span>رقم الملف: {enrollment.id:05d}</span>
 <span>بطاقة داخلية · ليست وثيقة هوية رسمية</span></footer>
 </article></div>
-<p class="small-note">حجم البطاقة 85.6 × 54 ملم. عند الطباعة اختَر A4 وحجم 100% لطباعة الأبعاد الحقيقية.</p>
+<p class="small-note">المعاينة مكبّرة على الشاشات الواسعة لتسهيل القراءة. الحجم الحقيقي للطباعة: 85.6 × 54 ملم. اختَر ورق A4 ومقياس 100%، وعطّل خيار «ملاءمة الصفحة» عند الطباعة.</p>
 </body></html>""")
 
 
