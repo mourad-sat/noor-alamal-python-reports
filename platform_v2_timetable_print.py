@@ -138,11 +138,13 @@ def select_options(values, selected, *, empty_label=None):
 
 
 @app.get("/platform/schedule/print", response_class=HTMLResponse)
-def print_timetable(request: Request, mode: str = "center",
+def print_timetable(request: Request, mode: str | None = None,
                     center_id: int = 0, staff_id: int = 0,
                     track_id: int = 0, year_id: int = 0,
                     db: Session = Depends(get_db), user=Depends(actor)):
     """Printable combinations. Scope all filters server-side, never only in UI."""
+    if mode is None:
+        mode = "staff" if user["role"] in ("educator", "instructor") else "center"
     if mode not in dict(PRINT_MODES):
         raise HTTPException(422, "نوع استعمال الزمن غير صحيح")
     allowed_center_pairs = center_options(db, user)
