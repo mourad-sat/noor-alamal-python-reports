@@ -579,7 +579,7 @@ def dashboard_absence_panel(db: Session, user, centers: list[Center],
 
     def joined(statement):
         return (
-            statement
+            statement.select_from(Attendance)
             .join(SessionDay, SessionDay.id == Attendance.session_id)
             .join(Slot, Slot.id == SessionDay.slot_id)
             .join(Enrollment, Enrollment.id == Attendance.enrollment_id)
