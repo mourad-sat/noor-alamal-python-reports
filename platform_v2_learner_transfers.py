@@ -1,11 +1,12 @@
 """Controlled learner track transfer with audit and preserved enrollment identity."""
 from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import app, get_db
 from platform_v2 import actor, assert_csrf, center_allowed, choose, e, form, learner_scope, log, page, redirect, require_role
-from platform_v2_models import Center, Enrollment, Learner, Track
+from platform_v2_models import Attendance, Discipline, Enrollment, Grade, Incident, Learner, Notice, Track
 
 
 def transfer_targets(db: Session, user, enrollment: Enrollment):
@@ -61,6 +62,17 @@ def learner_transfer(enrollment_id: int, request: Request,
         or target.year_id != enrollment.year_id
         or target.center_id != enrollment.center_id):
         raise HTTPException(422, "اختَر مسلكاً آخر من نفس المركز والسنة الدراسية")
+    # Do not reattribute existing educational history to a different track.
+    # Historical transfers require effective-dated enrollment support.
+    for model in (Attendance, Grade, Incident, Discipline, Notice):
+        if db.scalar(select(model.id).where(
+            model.enrollment_id == enrollment.id
+        ).limit(1)) is not None:
+            raise HTTPException(
+                409,
+                "هذا المستفيد عنده سجلات سابقة؛ لا يمكن نقله قبل تفعيل "
+                "نظام يحفظ تاريخ المسلك الأصلي.",
+            )
     # The enrollment ID remains unchanged, so all historical foreign keys stay intact.
     previous = enrollment.track_id
     enrollment.track_id = target.id
