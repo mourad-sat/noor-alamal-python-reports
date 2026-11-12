@@ -1481,6 +1481,7 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
             f'{preview_img}'
             '<div>'
             f'<p><a class="button" href="/platform/learners/{en.id}/edit">تعديل واستكمال البيانات</a> '
+            f'<a class="button" href="/platform/learners/{en.id}/transfer">نقل إلى مسلك آخر</a> '
             f'<a class="button" href="/platform/learners/{en.id}/card">طباعة بطاقة A4 المفصلة</a> '
             f'<a class="button" href="/platform/learners/{en.id}/card/mini">طباعة البطاقة الصغيرة</a></p>'
             '<p class="subtle">الصورة تظهر أعلى يمين البطاقتين، ولا يستطيع رفعها إلا المسؤول المخوّل للمركز.</p>'
