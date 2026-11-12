@@ -1068,3 +1068,41 @@
 @media(max-width:850px){.pv2-neon-shell .pv2-quick-list{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:500px){.pv2-neon-shell .pv2-quick-attendance{padding:13px}.pv2-neon-shell .pv2-quick-row{flex-direction:column;align-items:stretch}.pv2-neon-shell .pv2-quick-row select{width:100%;max-width:none}}
 @media print{.pv2-neon-shell .pv2-quick-row{break-inside:avoid}}
+
+
+/* Per-center independently alternating morning/evening weeks. */
+.pv2-neon-shell .pv2-weekly-rotation{
+ margin:14px 0;border:1px solid #347b85;border-radius:15px;
+ padding:18px 20px;background:linear-gradient(145deg,#103344,#12273e)
+}
+.pv2-neon-shell .pv2-weekly-rotation h2{font-size:20px;margin:0 0 10px;color:#e4f7ff}
+.pv2-neon-shell .pv2-weekly-rotation p{font-size:13px;color:#cee2ec;line-height:1.75}
+.pv2-neon-shell .pv2-weekly-rotation form{
+ display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:13px 0
+}
+.pv2-neon-shell .pv2-weekly-rotation label{
+ display:flex;flex-direction:column;gap:5px;color:#d7e9f3;min-width:170px;flex:1;
+ font-size:13px;font-weight:700
+}
+.pv2-neon-shell .pv2-weekly-rotation input,
+.pv2-neon-shell .pv2-weekly-rotation select,
+.pv2-neon-shell .pv2-weekly-rotation textarea{
+ background:#1b3e55;color:#f7fbff;border:1px solid #568aa0;
+ min-height:42px;padding:9px;border-radius:9px;width:100%;font:inherit
+}
+.pv2-neon-shell .pv2-weekly-rotation button{
+ padding:11px 16px;min-height:42px;border:1px solid #46bdb4;border-radius:9px;
+ background:#14766f;color:#fff;font-weight:800;cursor:pointer
+}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation{
+ background:#e7f5f8;border-color:#add2de
+}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation h2,
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation label{color:#1b4660}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation p{color:#486a7a}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation input,
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation select,
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-weekly-rotation textarea{
+ background:#fff;color:#173951;border-color:#b3ced8
+}
+@media(max-width:550px){.pv2-neon-shell .pv2-weekly-rotation{padding:12px}.pv2-neon-shell .pv2-weekly-rotation label{flex-basis:100%}}

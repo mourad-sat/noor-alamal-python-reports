@@ -22,10 +22,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import app, check_csrf, get_db, verify_password
+from platform_shift_rotation import (SHIFT_OPTIONS, SHIFT_LABELS, monday, center_rotation,
+    week_shift, slot_shift, slot_runs_on, shift_overlap, encode_slot_kind, weekday_label)
 from platform_v2_models import (
     Center, Year, Track, Staff, StaffProfile, Assignment, Learner, Enrollment, Slot, Closure,
     SessionDay, Attendance, Permit, SessionReport, Assessment, Grade,
-    Incident, Discipline, Notice, Notification, Audit, now,
+    Incident, Discipline, Notice, Notification, Audit, Setting, now,
 )
 
 SUBJECTS = ("الرياضيات", "الفرنسية", "العربية")
@@ -1603,6 +1605,8 @@ def grant_permit(enrollment_id:int,request:Request,token:str=Form(alias="_csrf")
 
 def overlaps(first:Slot, second:Slot) -> bool:
     if first.weekday!=second.weekday:return False
+    if first.specific_date is None and second.specific_date is None and not shift_overlap(first, second):
+        return False
     if first.specific_date and second.specific_date and first.specific_date!=second.specific_date:return False
     if first.specific_date and first.specific_date.weekday()!=second.weekday:return False
     if second.specific_date and second.specific_date.weekday()!=first.weekday:return False
@@ -1618,11 +1622,16 @@ def slot_conflict(db:Session,slot:Slot):
         # An exceptional make-up may replace a recurring occurrence only after
         # that exact date has been cancelled and audited by the coordinator.
         if slot.specific_date and not other.specific_date:
+            if not slot_runs_on(db, other, slot.specific_date):
+                continue
             canceled=db.scalar(select(SessionDay).where(
                 SessionDay.slot_id==other.id,
                 SessionDay.held_on==slot.specific_date,
                 SessionDay.status=="canceled"))
             if canceled:
+                continue
+        if other.specific_date and not slot.specific_date:
+            if not slot_runs_on(db, slot, other.specific_date):
                 continue
         return other
     return None
@@ -1637,7 +1646,8 @@ def schedule_manager(user, center_id: int):
 def validate_schedule_slot(db: Session, track_id: int, staff_id: int,
                            subject: str, weekday: int, starts_at: str,
                            ends_at: str, specific_date: date | None,
-                           reason: str, user, existing: Slot | None = None) -> Slot:
+                           reason: str, user, existing: Slot | None = None,
+                           shift: str = "both") -> Slot:
     track = db.get(Track, track_id)
     staff = db.get(Staff, staff_id)
     if not track or not staff:
@@ -1660,6 +1670,8 @@ def validate_schedule_slot(db: Session, track_id: int, staff_id: int,
     if (not 0 <= weekday <= 6 or not "00:00" <= starts_at < ends_at <= "23:59"
         or (specific_date and specific_date.weekday() != weekday)):
         raise HTTPException(422, "اليوم أو التوقيت غير صحيح")
+    if shift not in SHIFT_LABELS:
+        raise HTTPException(422, "نوع الأسبوع غير صحيح")
     if not 5 <= len(reason.strip()) <= 1000:
         raise HTTPException(422, "يجب كتابة مبرر واضح للتعديل أو الإضافة")
     slot = existing or Slot()
@@ -1668,7 +1680,7 @@ def validate_schedule_slot(db: Session, track_id: int, staff_id: int,
     slot.track_id = track.id
     slot.staff_id = staff_id
     slot.subject = subject
-    slot.kind = "professional" if subject == "مهني" else "pedagogical"
+    slot.kind = encode_slot_kind(subject, shift)
     slot.weekday = weekday
     slot.starts_at = starts_at
     slot.ends_at = ends_at
@@ -1687,11 +1699,12 @@ WEEKDAY_NAMES = ("الإثنين", "الثلاثاء", "الأربعاء", "ال
 
 
 def center_weekly_grid(center: Center, slots: list[Slot], tracks: dict,
-                       staff: dict) -> str:
+                       staff: dict, shift: str | None = None, week: date | None = None) -> str:
     """Seven-day timetable for one center; never mix centers or one-off sessions."""
     weekdays = []
     recurring = [slot for slot in slots if not slot.canceled and slot.specific_date is None
-                 and slot.center_id == center.id]
+                 and slot.center_id == center.id
+                 and (shift is None or slot_shift(slot) in ("both", shift))]
     for index, weekday in enumerate(WEEKDAY_NAMES):
         day_slots = sorted(
             (slot for slot in recurring if slot.weekday == index),
@@ -1715,6 +1728,8 @@ def center_weekly_grid(center: Center, slots: list[Slot], tracks: dict,
         '<section class="pv2-weekly-print-area" aria-label="استعمال الزمن الأسبوعي">'
         '<div class="pv2-weekly-title">'
         f'<h2>استعمال الزمن الأسبوعي — {e(center.name)}</h2>'
+        f'<p>{e(SHIFT_LABELS.get(shift, "التناوب غير مضبوط"))} · '
+        f'أسبوع {e(monday(week).isoformat() if week else "غير محدد")}</p>'
         '<p>الجمعية: نور الأمل · الحصص الأسبوعية المتكررة حسب المسلك والمؤطر</p>'
         '</div><div class="pv2-weekly-grid">' + "".join(weekdays) + '</div>'
         '</section>'
@@ -1723,6 +1738,7 @@ def center_weekly_grid(center: Center, slots: list[Slot], tracks: dict,
 
 @app.get("/platform/schedule",response_class=HTMLResponse)
 def schedule_page(request:Request, center_id:int|None=None,
+                  week_of:date|None=None,
                   db:Session=Depends(get_db),user=Depends(actor)):
     csrf=request.session["csrf"]
     ensure_data(db)
@@ -1733,6 +1749,9 @@ def schedule_page(request:Request, center_id:int|None=None,
     if center_id is None and centers:
         center_id = centers[0][0]
     center = db.get(Center, center_id) if center_id is not None else None
+    viewed_week = monday(week_of or datetime.now(ZoneInfo("Africa/Casablanca")).date())
+    current_shift = week_shift(db, center.id, viewed_week) if center else None
+    config = center_rotation(db, center.id) if center else None
 
     # Query only one authorized center; educators only see their own sessions.
     slots = db.scalars(
@@ -1763,14 +1782,51 @@ def schedule_page(request:Request, center_id:int|None=None,
         '<a class="button" href="/platform/schedule/print?mode='
         + ('staff&staff_id=' + str(user["id"]) if user["role"] in ("educator", "instructor")
            else 'center&center_id=' + str(center.id))
-        + '">طباعة وفق النموذج الرسمي / حفظ PDF</a>'
+        + f'&week_of={viewed_week.isoformat()}">طباعة وفق النموذج الرسمي / حفظ PDF</a>'
         '<a class="button" href="/platform/schedule/print">'
         'جميع خيارات الطباعة (المركزان / المؤطر / المجموعة)</a>'
         '<button type="button" data-print-timetable>طباعة العرض الحالي</button>'
         '</div>'
     )
-    body = header + print_button + center_weekly_grid(
-        center, slots, slot_tracks, slot_staff,
+    rotation_display = (
+        '<section class="pv2-weekly-rotation no-print">'
+        '<h2>التناوب الأسبوعي: صباح / مساء</h2>'
+        f'<p>الأسبوع المعروض: {e(viewed_week.isoformat())} · '
+        f'{e(weekday_label(db, center.id, viewed_week))}</p>'
+        '<form method="get" action="/platform/schedule?select_week=1">'
+        f'<input type="hidden" name="center_id" value="{center.id}">'
+        f'<label>اختيار أسبوع <input name="week_of" type="date" value="{viewed_week.isoformat()}"></label>'
+        '<button type="submit">عرض الأسبوع</button></form>'
+        + (
+            '<p class="subtle">لم يتم ضبط أسبوع مرجعي لهذا المركز بعد؛ '
+            'الحصص القديمة ستبقى ظاهرة دون حذف حتى تضبط التناوب.</p>'
+            if config is None else
+            f'<p class="subtle">مرجع التناوب: {e(config[0].isoformat())} '
+            f'({e(SHIFT_LABELS[config[1]])}).</p>'
+        )
+        + (
+            '<form method="post" action="/platform/schedule/rotation">'
+            + post_fields(csrf)
+            + f'<input type="hidden" name="center_id" value="{center.id}">'
+            + f'<label>أسبوع مرجعي (أي تاريخ منه)<input name="anchor" type="date" '
+              f'value="{(config[0] if config else viewed_week).isoformat()}" required></label>'
+            + '<label>نوع الأسبوع المرجعي<select name="anchor_shift">'
+            + "".join(
+                f'<option value="{code}"'
+                + (' selected' if config and config[1] == code else '')
+                + f'>{e(SHIFT_LABELS[code])}</option>'
+                for code in ("morning", "evening")
+            )
+            + '</select></label>'
+            + '<label>سبب الضبط<textarea name="reason" required minlength="6" '
+              'placeholder="ضبط التناوب الأسبوعي للمركز"></textarea></label>'
+            + '<button type="submit">حفظ تناوب هذا المركز</button></form>'
+            if user["role"] in ("admin", "coordinator") else ""
+        )
+        + '</section>'
+    )
+    body = header + rotation_display + print_button + center_weekly_grid(
+        center, slots, slot_tracks, slot_staff, current_shift, viewed_week,
     )
     # Exceptional, canceled and past revisions remain accessible separately.
     rows=[]
@@ -1799,7 +1855,8 @@ def schedule_page(request:Request, center_id:int|None=None,
             e(slot.starts_at+"–"+slot.ends_at),
             e(teacher.full_name),
             "استثنائية" if slot.specific_date else
-            ("مؤرشفة / ملغاة" if slot.canceled else "أسبوعية"),
+            ("مؤرشفة / ملغاة" if slot.canceled else
+             "أسبوعية — " + SHIFT_LABELS[slot_shift(slot)]),
             action,
         ])
     body += (
@@ -1830,6 +1887,7 @@ def schedule_page(request:Request, center_id:int|None=None,
                     + choose("subject","المادة",[("مهني","التكوين المهني")] +
                         [(subject, subject) for subject in SUBJECTS])
                     + choose("weekday","اليوم",list(enumerate(WEEKDAY_NAMES)))
+                    + choose("shift","نوع الأسبوع",SHIFT_OPTIONS)
                     + field("starts_at","من","time")
                     + field("ends_at","إلى","time")
                     + field("specific_date","تاريخ استثنائي (اختياري)","date",False)
@@ -1856,10 +1914,39 @@ def schedule_page(request:Request, center_id:int|None=None,
     return page(request,user,"استعمال الزمن الأسبوعي",body)
 
 
+@app.post("/platform/schedule/rotation")
+def save_center_shift_rotation(request: Request, token: str = Form(alias="_csrf"),
+                               center_id: int = Form(), anchor: date = Form(),
+                               anchor_shift: str = Form(), reason: str = Form(),
+                               db: Session = Depends(get_db), user=Depends(actor)):
+    """Per-center anchor defines all future and past odd/even calendar weeks."""
+    assert_csrf(request, token)
+    schedule_manager(user, center_id)
+    if db.get(Center, center_id) is None:
+        raise HTTPException(404, "المركز غير موجود")
+    if anchor_shift not in ("morning", "evening") or len(reason.strip()) < 6:
+        raise HTTPException(422, "حدد الأسبوع المرجعي وسبب التعديل")
+    normalized = monday(anchor)
+    for key, value in (
+        (f"shift_anchor_{center_id}", normalized.toordinal()),
+        (f"shift_phase_{center_id}", 0 if anchor_shift == "morning" else 1),
+    ):
+        setting = db.get(Setting, key)
+        if setting is None:
+            setting = Setting(key=key, value=value)
+            db.add(setting)
+        else:
+            setting.value = value
+    log(db, user, "configure_shift_rotation", "center", center_id, reason)
+    db.commit()
+    return redirect(f"/platform/schedule?center_id={center_id}&week_of={normalized.isoformat()}")
+
+
 @app.post("/platform/schedule")
 def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(),staff_id:int=Form(),
        subject:str=Form(),weekday:int=Form(),starts_at:str=Form(),ends_at:str=Form(),
-       specific_date:date|None=Form(None),reason:str=Form(""),db:Session=Depends(get_db),user=Depends(actor)):
+       specific_date:date|None=Form(None),reason:str=Form(""),
+       shift:str=Form("both"),db:Session=Depends(get_db),user=Depends(actor)):
     assert_csrf(request,token)
     if len(reason.strip()) < 5:
         content = (
@@ -1874,7 +1961,7 @@ def create_slot(request:Request,token:str=Form(alias="_csrf"),track_id:int=Form(
         return response
     slot = validate_schedule_slot(
         db, track_id, staff_id, subject, weekday, starts_at, ends_at,
-        specific_date, reason, user,
+        specific_date, reason, user, shift=shift,
     )
     db.add(slot);db.flush();log(db,user,"schedule","slot",slot.id,reason)
     db.add(Notification(staff_id=staff_id,message=f"حصة جديدة: {subject}، يوم {weekday} الساعة {starts_at}",target="/platform/schedule"))
@@ -1905,6 +1992,7 @@ def edit_schedule_page(slot_id: int, request: Request,
         + choose("weekday", "اليوم", days, selected=slot.weekday)
         + field("starts_at", "من", "time", value=slot.starts_at)
         + field("ends_at", "إلى", "time", value=slot.ends_at)
+        + choose("shift", "نوع الأسبوع", SHIFT_OPTIONS, selected=slot_shift(slot))
         + field("specific_date", "تاريخ استثنائي (اختياري)", "date", False,
                 slot.specific_date.isoformat() if slot.specific_date else "")
         + area("reason", "سبب تعديل استعمال الزمن (إلزامي)")
@@ -1929,6 +2017,7 @@ def edit_schedule(slot_id: int, request: Request,
                   staff_id: int = Form(), subject: str = Form(), weekday: int = Form(),
                   starts_at: str = Form(), ends_at: str = Form(),
                   specific_date: date | None = Form(None), reason: str = Form(),
+                  shift: str = Form("both"),
                   db: Session = Depends(get_db), user=Depends(actor)):
     assert_csrf(request, token)
     slot = db.get(Slot, slot_id)
@@ -1951,7 +2040,7 @@ def edit_schedule(slot_id: int, request: Request,
         db.flush()
         current = validate_schedule_slot(
             db, track_id, staff_id, subject, weekday,
-            starts_at, ends_at, specific_date, reason, user,
+            starts_at, ends_at, specific_date, reason, user, shift=shift,
         )
         db.add(current)
         db.flush()
@@ -1960,7 +2049,7 @@ def edit_schedule(slot_id: int, request: Request,
     else:
         current = validate_schedule_slot(
             db, track_id, staff_id, subject, weekday,
-            starts_at, ends_at, specific_date, reason, user, existing=slot,
+            starts_at, ends_at, specific_date, reason, user, existing=slot, shift=shift,
         )
     db.add(Notification(
         staff_id=current.staff_id,
@@ -2004,6 +2093,8 @@ def open_session(request:Request,token:str=Form(alias="_csrf"),slot_id:int=Form(
     if db.scalar(select(Closure).where(Closure.center_id==slot.center_id,Closure.closed_on==held_on)):
         raise HTTPException(409,"هذا اليوم مغلق؛ لا يُحتسب الغياب")
     item=db.scalar(select(SessionDay).where(SessionDay.slot_id==slot.id,SessionDay.held_on==held_on))
+    if not item and not slot_runs_on(db, slot, held_on):
+        raise HTTPException(409, "هذه الحصة مبرمجة في الأسبوع الصباحي أو المسائي الآخر")
     if item and item.status=="canceled":
         raise HTTPException(409,"الحصة ملغاة لهذا التاريخ ولا يُحتسب الغياب")
     if not item:
@@ -2271,7 +2362,8 @@ def current_staff_session(request: Request, db: Session = Depends(get_db),
             Closure.center_id.in_(centers), Closure.closed_on == today
         )
     ).all()) if centers else set()
-    candidates = matching_staff_sessions(authorized, today, clock, closures)
+    candidates = [slot for slot in matching_staff_sessions(authorized, today, clock, closures)
+                  if slot_runs_on(db, slot, today)]
     existing = {
         item.slot_id: item for item in db.scalars(
             select(SessionDay).where(
