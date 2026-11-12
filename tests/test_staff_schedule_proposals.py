@@ -203,3 +203,25 @@ def test_admin_has_coordinator_report_permit_notice_and_schedule_permissions(cli
         assert False, "an instructor should not inherit approvals"
     except HTTPException as err:
         assert err.status_code == 403
+
+
+def test_administration_can_author_and_approve_center_summary_without_staff_impersonation(client):
+    from app import engine
+    from platform_v2_models import CenterReport
+    admin = setup_org(client)
+    response = post(client, "/platform/summary", admin,
+                    year_id=1, center_id=1, period_type="weekly",
+                    period_start="2026-11-02", period_end="2026-11-08",
+                    analysis="التقرير الأسبوعي من الإدارة")
+    assert response.status_code == 303
+    with Session(engine) as db:
+        report = db.get(CenterReport, 1)
+        assert report.author_id is None
+        assert report.analysis == "التقرير الأسبوعي من الإدارة"
+    assert post(client, "/platform/summary/1/submit", admin).status_code == 303
+    assert post(client, "/platform/summary/1/review", admin,
+                decision="approved", comment="").status_code == 303
+    with Session(engine) as db:
+        report = db.get(CenterReport, 1)
+        assert report.status == "approved"
+        assert report.reviewed_by == "إدارة الجمعية"
