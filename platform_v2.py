@@ -2109,6 +2109,84 @@ def attendance_choice_form(session_id: int, enrollment_id: int, csrf: str,
     )
 
 
+def quick_attendance_form(session_id: int, csrf: str, enrollments: list,
+                          learners: dict, marks: dict, pending: set[int],
+                          excluded: set[int]) -> str:
+    """Single save for absentees and late arrivals; never assume prior absence
+    or disciplinary exclusion means present. Existing marks are not overwritten.
+    """
+    if not enrollments:
+        return (
+            '<section class="pv2-quick-attendance">'
+            '<h2>تسجيل الحضور السريع</h2>'
+            '<p>لا يوجد مستفيدون مسجلون في هذه المجموعة.</p></section>'
+        )
+    statuses = (("present", "حاضر"), ("absent", "غائب"),
+                ("late", "متأخر"), ("unmarked", "غير مسجل"))
+    rows = []
+    for enrollment in enrollments:
+        old = marks.get(enrollment.id)
+        status = old.status if old else (
+            "unmarked" if enrollment.id in pending or enrollment.id in excluded
+            else "present"
+        )
+        locked = bool(old)
+        choices = "".join(
+            f'<option value="{code}"'
+            + (' selected' if code == status else '')
+            + (' disabled' if not old and (
+                (enrollment.id in excluded and code != "unmarked") or
+                (enrollment.id in pending and code in ("present", "late"))
+            ) else '')
+            + f'>{label}</option>'
+            for code, label in statuses
+        )
+        notice = (
+            '<small class="pv2-quick-warning">إقصاء تأديبي: لا يمكن تسجيل حضور.</small>'
+            if enrollment.id in excluded else
+            '<small class="pv2-quick-warning">غياب سابق معلق: يلزم إذن المنسق '
+            'قبل الحضور أو التأخر.</small>' if enrollment.id in pending and not old else
+            '<small>الحالة محفوظة سابقاً؛ لا تُعدّل من التسجيل الجماعي.</small>'
+            if old else ""
+        )
+        rows.append(
+            '<div class="pv2-quick-row" data-quick-row>'
+            f'<label for="quick-attendance-{enrollment.id}">'
+            f'<strong>{e(learners[enrollment.learner_id].full_name)}</strong>'
+            + notice + '</label>'
+            f'<select id="quick-attendance-{enrollment.id}" '
+            f'name="attendance_{enrollment.id}" data-quick-status '
+            f'aria-label="حالة حضور {e(learners[enrollment.learner_id].full_name)}"'
+            + (' disabled' if locked else '')
+            + '>' + choices + '</select>'
+            + (f'<input type="hidden" name="attendance_{enrollment.id}" '
+               f'value="{e(old.status)}">' if old else "")
+            + '</div>'
+        )
+    return (
+        '<section class="pv2-quick-attendance" aria-label="التسجيل الجماعي للحضور">'
+        '<div class="pv2-section-head"><div>'
+        '<h2>تسجيل الغائبين فقط</h2>'
+        '<p>الحاضرون مقترحون تلقائياً، اختر الغائب أو المتأخر فقط. '
+        'ما غادي يتسجل حتى حضور قبل تأكيد الحفظ.</p></div></div>'
+        f'<form method="post" action="/platform/sessions/{session_id}/attendance/bulk" '
+        'data-quick-attendance>'
+        + post_fields(csrf)
+        + '<input type="hidden" name="confirm" value="1">'
+        '<div class="pv2-quick-summary" data-quick-summary role="status" aria-live="polite"></div>'
+        '<div class="pv2-quick-list">' + "".join(rows) + '</div>'
+        '<div class="pv2-quick-actions">'
+        '<button type="button" data-quick-preview>معاينة الحضور قبل الحفظ</button>'
+        '<div data-quick-confirmation hidden aria-live="polite">'
+        '<p>راجع العدد أعلاه والحالات المختارة، ثم أكد حفظ الحصة.</p></div>'
+        '<button type="submit" data-quick-save disabled>تأكيد وحفظ الحضور للجميع</button>'
+        '</div>'
+        '<noscript><p>خاص تفعيل JavaScript لاستخدام الحفظ الجماعي؛ '
+        'يمكنك تسجيل كل مستفيد على حدة من الجدول أسفله.</p></noscript>'
+        '</form></section>'
+    )
+
+
 def attendance_summary(enrollments, marks: dict) -> str:
     """Show only this session's enrollment counts; do not imply absent for unmarked."""
     counts = {"present": 0, "absent": 0, "late": 0, "unmarked": 0}
@@ -2276,12 +2354,23 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
        Enrollment.center_id==slot.center_id,Enrollment.track_id==slot.track_id,Enrollment.status=="active")).all()
     marks={a.enrollment_id:a for a in db.scalars(select(Attendance).where(Attendance.session_id==s.id)).all()}
     report=db.scalar(select(SessionReport).where(SessionReport.session_id==s.id))
+    can_bulk = user["id"] == slot.staff_id and s.status != "canceled" and (
+        not report or report.status != "approved"
+    )
+    roster = by_id(db, Learner, (en.learner_id for en in enrollments))
+    excluded = disciplined_enrollment_ids(db, (en.id for en in enrollments), s.held_on)
+    absent_pending = set(db.scalars(
+        select(Attendance.enrollment_id).where(
+            Attendance.enrollment_id.in_([en.id for en in enrollments]),
+            Attendance.status == "absent",
+            Attendance.permit_id.is_(None),
+        )
+    ).all())
     rows=[]
     for en in enrollments:
-        l=db.get(Learner,en.learner_id)
-        pend=db.scalar(select(func.count()).select_from(Attendance).where(Attendance.enrollment_id==en.id,
-                    Attendance.status=="absent",Attendance.permit_id.is_(None))) or 0
-        discipline=disciplinary_status(db,en,s.held_on)
+        l=roster[en.learner_id]
+        pend=en.id in absent_pending
+        discipline=en.id in excluded
         state='<span class="danger">إقصاء تأديبي</span>' if discipline else '<span class="danger">غياب سابق معلق</span>' if pend else '<span class="good">مسموح بالدخول</span>'
         old=marks.get(en.id)
         action="—"
@@ -2300,9 +2389,15 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
         rows.append([f'<a href="/platform/learners/{en.id}">{e(l.full_name)}</a>',state,
            e(old.status if old else "لم يسجل"),action])
     summary = attendance_summary(enrollments, marks)
+    quick = (
+        quick_attendance_form(
+            s.id, request.session["csrf"], enrollments,
+            roster, marks, absent_pending, excluded,
+        ) if can_bulk else ""
+    )
     body=(f'<section class="pv2-attendance-session"><h2>{e(slot.subject)} · {e(s.held_on)}</h2>'
           f'<p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>'
-          f'{summary}<h2>تسجيل حضور المستفيدين</h2>'
+          f'{summary}</section>' + quick + '<section><h2>تفاصيل الحضور والتعديل الفردي</h2>'
           f'{table(["المستفيد","التنبيه","الحضور الحالي","الإجراء"],rows)}</section>')
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
         body += session_report_editor(s.id, request.session["csrf"], report, slot.subject)
@@ -2342,6 +2437,91 @@ def absence_notice(db:Session,en:Enrollment,held_on:date):
             text=f"إشعار بخصوص الغياب المتكرر: {len(matched)} حصص في {len(set(s.held_on for s in matched))} أيام خلال {label}."
             n=Notice(enrollment_id=en.id,kind="absence",period_key=period,body=text,status="draft")
             db.add(n);db.flush();notify(db,en.center_id,f"مسودة إشعار غياب متكرر للمستفيد رقم {en.learner_id}",f"/platform/notices")
+
+@app.post("/platform/sessions/{session_id}/attendance/bulk")
+async def save_bulk_attendance(session_id: int, request: Request,
+                               db: Session = Depends(get_db), user=Depends(actor)):
+    """Atomic one-click roll call for the current track, preserving all prior marks.
+
+    Each form field represents exactly one currently active enrollment.
+    Validate the complete set before any new attendance is persisted.
+    """
+    values = await request.form()
+    assert_csrf(request, str(values.get("_csrf", "")))
+    if values.get("confirm") != "1":
+        raise HTTPException(422, "يجب معاينة الحضور وتأكيد الحفظ أولاً")
+    session = db.get(SessionDay, session_id)
+    if not session:
+        raise HTTPException(404, "الحصة غير موجودة")
+    slot = slot_scope(db, user, session.slot_id, for_write=True)
+    if user["role"] not in ("instructor", "educator") or slot.staff_id != user["id"]:
+        raise HTTPException(403, "التسجيل الجماعي متاح للمؤطر المكلف بالحصة فقط")
+    if session.status == "canceled":
+        raise HTTPException(409, "لا يجوز تسجيل حضور حصة ملغاة")
+    if db.scalar(select(SessionReport.id).where(
+        SessionReport.session_id == session_id,
+        SessionReport.status == "approved",
+    )):
+        raise HTTPException(409, "الحضور مقفل بعد اعتماد تقرير الحصة")
+    enrollments = db.scalars(select(Enrollment).where(
+        Enrollment.year_id == slot.year_id,
+        Enrollment.center_id == slot.center_id,
+        Enrollment.track_id == slot.track_id,
+        Enrollment.status == "active",
+    )).all()
+    if not enrollments:
+        raise HTTPException(422, "لا يوجد مستفيدون مسجلون في هذه الحصة")
+    expected = {f"attendance_{en.id}": en for en in enrollments}
+    received = [key for key in values.keys() if key.startswith("attendance_")]
+    if set(received) != set(expected) or any(
+        len(values.getlist(key)) != 1 for key in expected
+    ):
+        raise HTTPException(409, "لائحة المستفيدين تغيرت؛ حدّث الصفحة وراجع الحضور")
+    old_marks = {a.enrollment_id: a for a in db.scalars(
+        select(Attendance).where(Attendance.session_id == session_id)
+    ).all()}
+    excluded = disciplined_enrollment_ids(db, (en.id for en in enrollments), session.held_on)
+    pending = set(db.scalars(select(Attendance.enrollment_id).where(
+        Attendance.enrollment_id.in_([en.id for en in enrollments]),
+        Attendance.status == "absent",
+        Attendance.permit_id.is_(None),
+    )).all())
+    changes = []
+    for field, enrollment in expected.items():
+        status = str(values.get(field, ""))
+        if status not in ("present", "absent", "late", "unmarked"):
+            raise HTTPException(422, "حالة الحضور غير صحيحة")
+        old = old_marks.get(enrollment.id)
+        if old:
+            if status != old.status:
+                raise HTTPException(
+                    409, "تم تسجيل حالة أحد المستفيدين من قبل؛ "
+                    "استعمل التعديل الفردي لتفادي حذف المعطيات السابقة"
+                )
+            continue
+        if status == "unmarked":
+            continue
+        if enrollment.id in excluded:
+            raise HTTPException(409, "مستفيد في إقصاء تأديبي؛ راجع حالته قبل الحفظ")
+        if status in ("present", "late") and enrollment.id in pending:
+            raise HTTPException(409, "يوجد غياب سابق معلق؛ يلزم إذن المنسق قبل تسجيل الحضور")
+        changes.append((enrollment, status))
+    if not changes:
+        raise HTTPException(422, "لم يتم اختيار حالات حضور جديدة للحفظ")
+    for enrollment, status in changes:
+        db.add(Attendance(
+            session_id=session_id, enrollment_id=enrollment.id,
+            status=status, recorded_by=user["name"],
+        ))
+    db.flush()
+    for enrollment, status in changes:
+        if status == "absent":
+            absence_notice(db, enrollment, session.held_on)
+    log(db, user, "attendance_bulk", "session", session_id,
+        f"{len(changes)} حالات حضور مسجلة دفعة واحدة")
+    db.commit()
+    return redirect(f"/platform/sessions/{session_id}")
+
 
 @app.post("/platform/sessions/{session_id}/attendance")
 def mark_attendance(session_id:int,request:Request,token:str=Form(alias="_csrf"),
