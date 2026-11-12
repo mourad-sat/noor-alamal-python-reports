@@ -12,6 +12,7 @@ import html
 import secrets
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 
 from fastapi import Depends, Form, HTTPException, Request
@@ -595,11 +596,18 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         '<a class="pv2-neon-todo" href="/platform/reports">'
         f'<strong>{e(todo_text)}</strong><span>عرض التقارير والمراجعة ←</span></a>'
     ) if todo_count else ""
-    actions = [
-        ("تسجيل الحضور", "calendar", "/platform/schedule", "green"),
-        ("تقرير جديد", "document", "/platform/reports", "blue"),
-        ("إضافة مستفيد", "user-plus", "/platform/learners", "purple"),
-    ]
+    if user["role"] in ("instructor", "educator"):
+        actions = [
+            ("فتح حصة اليوم", "calendar", "/platform/sessions/today", "green"),
+            ("تقرير الحصة", "document", "/platform/sessions/today", "blue"),
+            ("تقاريري", "documents", "/platform/reports", "purple"),
+        ]
+    else:
+        actions = [
+            ("تسجيل الحضور", "calendar", "/platform/schedule", "green"),
+            ("تقرير جديد", "document", "/platform/reports", "blue"),
+            ("إضافة مستفيد", "user-plus", "/platform/learners", "purple"),
+        ]
     quick = (
         '<section class="pv2-neon-panel pv2-neon-quick"><h2>إجراءات سريعة</h2>'
         '<div class="pv2-neon-actions">'
@@ -1980,6 +1988,135 @@ def attendance_summary(enrollments, marks: dict) -> str:
     )
 
 
+def matching_staff_sessions(slots: list[Slot], on_date: date,
+                            at_time: str, closures: set[int]) -> list[Slot]:
+    """Choose assigned, active sessions for today without guessing a slot.
+
+    Chronological order ensures the instructor can explicitly select a different
+    session when they teach in both centers on the same day.
+    """
+    matching = [
+        slot for slot in slots
+        if not slot.canceled
+        and slot.weekday == on_date.weekday()
+        and (slot.specific_date is None or slot.specific_date == on_date)
+        and slot.center_id not in closures
+    ]
+    return sorted(
+        matching,
+        key=lambda slot: (
+            0 if slot.starts_at <= at_time < slot.ends_at else
+            1 if slot.starts_at > at_time else 2,
+            slot.starts_at, slot.center_id, slot.id,
+        ),
+    )
+
+
+@app.get("/platform/sessions/today", response_class=HTMLResponse)
+def current_staff_session(request: Request, db: Session = Depends(get_db),
+                          user=Depends(actor)):
+    """Today's role-scoped session picker; GET never creates attendance records."""
+    if user["role"] not in ("instructor", "educator"):
+        raise HTTPException(403, "هذه الصفحة مخصصة للمنشطين والمكونين")
+    now_local = datetime.now(ZoneInfo("Africa/Casablanca"))
+    today = now_local.date()
+    clock = now_local.strftime("%H:%M")
+    assigned = {
+        (assignment.center_id, assignment.track_id)
+        for assignment in user["assignments"]
+    }
+    slots = db.scalars(
+        select(Slot).where(
+            Slot.staff_id == user["id"],
+            Slot.weekday == today.weekday(),
+            Slot.canceled.is_(False),
+            or_(Slot.specific_date.is_(None), Slot.specific_date == today),
+        ).order_by(Slot.starts_at, Slot.center_id, Slot.id)
+    ).all()
+    authorized = [
+        slot for slot in slots
+        if (slot.center_id, slot.track_id) in assigned
+    ]
+    centers = {slot.center_id for slot in authorized}
+    closures = set(db.scalars(
+        select(Closure.center_id).where(
+            Closure.center_id.in_(centers), Closure.closed_on == today
+        )
+    ).all()) if centers else set()
+    candidates = matching_staff_sessions(authorized, today, clock, closures)
+    existing = {
+        item.slot_id: item for item in db.scalars(
+            select(SessionDay).where(
+                SessionDay.slot_id.in_([slot.id for slot in candidates]),
+                SessionDay.held_on == today,
+            )
+        ).all()
+    } if candidates else {}
+    # With only one ongoing session, open its existing page immediately,
+    # never create a new session via a read-only request.
+    ongoing = [
+        slot for slot in candidates
+        if slot.starts_at <= clock < slot.ends_at
+        and not (existing.get(slot.id) and existing[slot.id].status == "canceled")
+    ]
+    if len(ongoing) == 1 and existing.get(ongoing[0].id):
+        return redirect(f"/platform/sessions/{existing[ongoing[0].id].id}")
+
+    track_names = by_id(db, Track, (slot.track_id for slot in candidates))
+    center_names = by_id(db, Center, (slot.center_id for slot in candidates))
+    cards = []
+    for slot in candidates:
+        opened = existing.get(slot.id)
+        if opened and opened.status == "canceled":
+            continue
+        active = slot.starts_at <= clock < slot.ends_at
+        status = "الحصة الجارية الآن" if active else (
+            "حصة لاحقة اليوم" if slot.starts_at > clock else "حصة سابقة اليوم"
+        )
+        action = (
+            f'<a class="button" href="/platform/sessions/{opened.id}">'
+            'فتح الحصة وتقريرها</a>'
+            if opened else
+            form(
+                "/platform/sessions", request.session["csrf"],
+                f'<input type="hidden" name="slot_id" value="{slot.id}">'
+                f'<input type="hidden" name="held_on" value="{today.isoformat()}">',
+                "فتح هذه الحصة وإضافة التقرير",
+            )
+        )
+        cards.append(
+            '<article class="pv2-current-session-card">'
+            f'<p class="pv2-current-session-status">{e(status)}</p>'
+            f'<h3>{e(slot.subject)} · {e(track_names[slot.track_id].name)}</h3>'
+            f'<p>{e(center_names[slot.center_id].name)} · '
+            f'{e(slot.starts_at)}–{e(slot.ends_at)}</p>'
+            + action + '</article>'
+        )
+    if not cards:
+        content = (
+            '<p>ما عندك حتى حصة مبرمجة اليوم حسب استعمال الزمن الحالي، '
+            'أو الحصص ديالك ملغاة لهذا التاريخ.</p>'
+            '<p>إلى بغيتي تقرير حصة من يوم سابق، افتحها من جدول الحصص '
+            'وحدد التاريخ الصحيح يدوياً.</p>'
+        )
+    else:
+        content = (
+            '<p>تحددات الحصص آلياً من استعمال الزمن ديالك فالمركزين. '
+            'اختار الحصة اللي خدمتي فيها؛ ما غاديش يتسجل حتى حضور أو تقرير '
+            'حتى تأكد فتح الحصة.</p>'
+            '<div class="pv2-current-sessions">' + "".join(cards) + '</div>'
+        )
+    return page(
+        request, user, "حصة اليوم",
+        '<section class="pv2-current-session-picker">'
+        f'<h2>حصصي اليوم — {e(today.isoformat())}</h2>'
+        + content
+        + '<p><a class="button" href="/platform/schedule">'
+          'الرجوع لاستعمال الزمن والاختيار اليدوي</a></p>'
+        '</section>',
+    )
+
+
 @app.get("/platform/sessions/{session_id}",response_class=HTMLResponse)
 def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     s=db.get(SessionDay,session_id)
@@ -2226,7 +2363,14 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             e(r.review_comment) or "—",
             '<div class="pv2-review-actions">' + "".join(actions) + '</div>',
         ])
-    body = report_status_summary(visible)
+    body = (
+        '<section class="pv2-current-session-shortcut">'
+        '<h2>إضافة تقرير حصة اليوم</h2>'
+        '<p>تحديد الحصة آلياً حسب استعمال الزمن والتوقيت، مع الاختيار اليدوي عند الحاجة.</p>'
+        '<a class="button" href="/platform/sessions/today">فتح حصتي اليوم</a>'
+        '</section>'
+    ) if user["role"] in ("instructor", "educator") else ""
+    body += report_status_summary(visible)
     body += (
         '<section class="pv2-review-list"><div class="pv2-section-head">'
         '<h2>تقارير الحصص</h2><span>الاطلاع والمراجعة حسب صلاحيات الحساب</span></div>'
