@@ -127,6 +127,28 @@ class Slot(Base):
     canceled: Mapped[bool] = mapped_column(Boolean, default=False)
     change_reason: Mapped[str] = mapped_column(Text, default="")
 
+class ScheduleProposal(Base):
+    """Teacher-proposed slot creation/change; no live timetable effect until review."""
+    __tablename__ = "v2_schedule_proposals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    center_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_centers")), index=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")))
+    staff_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")), index=True)
+    slot_id: Mapped[int | None] = mapped_column(ForeignKey(fk("v2_slots")), nullable=True)
+    subject: Mapped[str] = mapped_column(String(90))
+    weekday: Mapped[int] = mapped_column(Integer)
+    starts_at: Mapped[str] = mapped_column(String(5))
+    ends_at: Mapped[str] = mapped_column(String(5))
+    specific_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shift: Mapped[str] = mapped_column(String(12), default="both")
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    reviewed_by: Mapped[str] = mapped_column(String(140), default="")
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Closure(Base):
     __tablename__ = "v2_closures"
     id: Mapped[int] = mapped_column(primary_key=True)
