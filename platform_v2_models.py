@@ -298,7 +298,7 @@ class CenterReport(Base):
     period_end: Mapped[date] = mapped_column(Date)
     analysis: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="draft")
-    author_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")))
+    author_id: Mapped[int | None] = mapped_column(ForeignKey(fk("v2_staff")), nullable=True)
     reviewed_by: Mapped[str] = mapped_column(String(140), default="")
     review_comment: Mapped[str] = mapped_column(Text, default="")
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
