@@ -955,3 +955,31 @@
   .pv2-neon-shell .pv2-center-select,.pv2-neon-shell .pv2-weekly-print-actions,
   .pv2-neon-shell .pv2-weekly-details,.pv2-neon-shell .pv2-weekly-edit{display:none!important}
 }
+
+
+/* One-click session recognition for educators across both centers. */
+.pv2-neon-shell .pv2-current-session-picker,
+.pv2-neon-shell .pv2-current-session-shortcut{border-color:#2f6384}
+.pv2-neon-shell .pv2-current-sessions{
+ display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));
+ gap:14px;margin:20px 0
+}
+.pv2-neon-shell .pv2-current-session-card{
+ background:linear-gradient(145deg,#163147,#11283c);border:1px solid #3b6679;
+ border-radius:14px;padding:18px;min-width:0
+}
+.pv2-neon-shell .pv2-current-session-card h3{margin:4px 0 8px;font-size:18px}
+.pv2-neon-shell .pv2-current-session-card p{color:#cee0ed}
+.pv2-neon-shell .pv2-current-session-status{
+ display:inline-block;padding:4px 11px;border:1px solid #148f93;
+ border-radius:9px;background:#103b48;color:#aefcf4!important;font-size:12px
+}
+.pv2-neon-shell .pv2-current-session-card form{margin-top:14px}
+.pv2-neon-shell .pv2-current-session-card form button,
+.pv2-neon-shell .pv2-current-session-card a.button{min-height:43px}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-current-session-card{
+ background:#f4fafc;color:#183d56;border-color:#b8d2dc
+}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-current-session-card p{color:#33576a}
+@media(max-width:550px){.pv2-neon-shell .pv2-current-sessions{grid-template-columns:minmax(0,1fr)}}
+@media print{.pv2-neon-shell .pv2-current-session-card{break-inside:avoid}}
