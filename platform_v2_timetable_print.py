@@ -7,6 +7,9 @@ No timetable data, printed times or learner counts are fabricated.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+from platform_shift_rotation import week_shift, slot_shift, monday, SHIFT_LABELS
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -141,8 +144,10 @@ def select_options(values, selected, *, empty_label=None):
 def print_timetable(request: Request, mode: str | None = None,
                     center_id: int = 0, staff_id: int = 0,
                     track_id: int = 0, year_id: int = 0,
+                    week_of: date | None = None,
                     db: Session = Depends(get_db), user=Depends(actor)):
     """Printable combinations. Scope all filters server-side, never only in UI."""
+    selected_week = monday(week_of or datetime.now(ZoneInfo("Africa/Casablanca")).date())
     if mode is None:
         mode = "staff" if user["role"] in ("educator", "instructor") else "center"
     if mode not in dict(PRINT_MODES):
@@ -218,6 +223,9 @@ def print_timetable(request: Request, mode: str | None = None,
         elif mode == "track":
             query = query.where(Slot.track_id == track_id)
         slots = db.scalars(query.order_by(Slot.weekday, Slot.starts_at, Slot.center_id)).all()
+        slots = [slot for slot in slots
+                 if week_shift(db, slot.center_id, selected_week) in (None, slot_shift(slot))
+                 or slot_shift(slot) == "both"]
     else:
         slots = []
     if user["role"] in ("instructor", "educator"):
@@ -269,6 +277,14 @@ def print_timetable(request: Request, mode: str | None = None,
         institution = centers_by_id[center_id].name if center_id in centers_by_id else "جمعية نور الأمل"
         specialization = "جميع التخصصات"
         group_label = "جميع مجموعات المركز"
+    shift_summary = " · ".join(
+        f"{centers_by_id[cid].name}: "
+        f"{SHIFT_LABELS.get(week_shift(db, cid, selected_week), 'التناوب غير مضبوط')}"
+        for cid in target_centers if cid in centers_by_id
+    )
+    title += f" · أسبوع {selected_week.isoformat()}"
+    if shift_summary:
+        title += " · " + shift_summary
     if mode == "staff" and not center_id:
         institution = " / ".join(centers_by_id[cid].name for cid in target_centers if cid in centers_by_id)
 
@@ -294,6 +310,7 @@ def print_timetable(request: Request, mode: str | None = None,
         '<label data-print-filter="center">المركز<select name="center_id">' + center_opts + '</select></label>'
         '<label data-print-filter="staff">المكوّن / المنشّط<select name="staff_id">' + worker_opts + '</select></label>'
         '<label data-print-filter="track">المجموعة / المسلك<select name="track_id">' + track_opts + '</select></label>'
+        f'<label>الأسبوع<input type="date" name="week_of" value="{selected_week.isoformat()}" required></label>'
         '<label>السنة الدراسية<select name="year_id">'
         + select_options([(y.id, y.label) for y in years], year.id if year else 0)
         + '</select></label><button type="submit">عرض استعمال الزمن</button>'
