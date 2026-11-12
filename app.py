@@ -467,5 +467,6 @@ import platform_v2_learner_completeness  # noqa: E402,F401
 import platform_v2_privacy  # noqa: E402,F401
 import platform_v2_schedule_exceptions  # noqa: E402,F401
 import platform_v2_timetable_print  # noqa: E402,F401
+import platform_v2_schedule_proposals  # noqa: E402,F401
 import platform_v2_report_print  # noqa: E402,F401
 import platform_v2_attendance_stats  # noqa: E402,F401
