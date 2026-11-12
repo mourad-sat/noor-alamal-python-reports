@@ -65,7 +65,7 @@ def attachments_page(report_id:int,request:Request,db:Session=Depends(get_db),us
         link=f'<a href="/platform/attachments/{item.id}/download">{e(item.original_name)}</a>'
         summary="نعم" if item.select_for_summary else "لا"
         action=""
-        if user["role"]=="coordinator" and report.status=="approved":
+        if user["role"] in ("admin", "coordinator") and report.status=="approved":
             action=form(f"/platform/attachments/{item.id}/select",csrf,"","إلغاء الاختيار" if item.select_for_summary else "إدراج بالتقرير الدوري")
         if user["role"]=="admin":
             action+=form(f"/platform/attachments/{item.id}/delete",csrf,
