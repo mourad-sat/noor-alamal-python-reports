@@ -1782,7 +1782,7 @@ def schedule_page(request:Request, center_id:int|None=None,
         '<a class="button" href="/platform/schedule/print?mode='
         + ('staff&staff_id=' + str(user["id"]) if user["role"] in ("educator", "instructor")
            else 'center&center_id=' + str(center.id))
-        + '">طباعة وفق النموذج الرسمي / حفظ PDF</a>'
+        + f'&week_of={viewed_week.isoformat()}'>طباعة وفق النموذج الرسمي / حفظ PDF</a>'
         '<a class="button" href="/platform/schedule/print">'
         'جميع خيارات الطباعة (المركزان / المؤطر / المجموعة)</a>'
         '<button type="button" data-print-timetable>طباعة العرض الحالي</button>'
@@ -1855,7 +1855,8 @@ def schedule_page(request:Request, center_id:int|None=None,
             e(slot.starts_at+"–"+slot.ends_at),
             e(teacher.full_name),
             "استثنائية" if slot.specific_date else
-            ("مؤرشفة / ملغاة" if slot.canceled else "أسبوعية"),
+            ("مؤرشفة / ملغاة" if slot.canceled else
+             "أسبوعية — " + SHIFT_LABELS[slot_shift(slot)]),
             action,
         ])
     body += (
