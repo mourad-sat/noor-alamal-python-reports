@@ -36,7 +36,7 @@ def corrections_page(request: Request, db: Session=Depends(get_db), user=Depends
         ):
             continue
         review = "—"
-        if item.status == "pending" and user["role"] == "coordinator":
+        if item.status == "pending" and user["role"] in ("admin", "coordinator"):
             review = form(f"/platform/attendance/corrections/{item.id}/review", csrf,
                 '<input name="decision" type="hidden" value="approved">'
                 + area("comment", "ملاحظة المنسق (اختيارية)"), "اعتماد التصحيح")

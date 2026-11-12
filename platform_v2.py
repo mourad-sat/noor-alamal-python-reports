@@ -84,8 +84,8 @@ def center_allowed(user, center_id: int) -> bool:
     return user["role"] == "admin" or any(a.center_id == center_id for a in user["assignments"])
 
 def coordinator(user, center_id: int):
-    if user["role"] != "coordinator" or not center_allowed(user, center_id):
-        raise HTTPException(403, "هذه العملية من صلاحيات منسق المركز فقط.")
+    if user["role"] not in ("admin", "coordinator") or not center_allowed(user, center_id):
+        raise HTTPException(403, "هذه العملية من صلاحيات إدارة الجمعية أو منسق المركز.")
 
 def learner_scope(db: Session, user, enrollment_id: int):
     enrollment = db.get(Enrollment, enrollment_id)
@@ -173,6 +173,7 @@ def page(request, user, title, body):
     menu = [
         ("الرئيسية", "/platform"), ("السنوات والمسالك", "/platform/years"),
         ("المستفيدون", "/platform/learners"), ("جدولة الحصص", "/platform/schedule"),
+        ("طلبات استعمال الزمن", "/platform/schedule/proposals"),
         ("طباعة استعمال الزمن", "/platform/schedule/print"),
         ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"),
         ("إحصائيات الحضور", "/platform/attendance/stats"), ("النقط", "/platform/grades"),
@@ -197,7 +198,8 @@ def page(request, user, title, body):
     nav_items = []
     nav_icons = {
         "/platform": "home", "/platform/learners": "users",
-        "/platform/schedule": "calendar", "/platform/schedule/print": "calendar", "/platform/reports": "document",
+        "/platform/schedule": "calendar", "/platform/schedule/print": "calendar",
+        "/platform/schedule/proposals": "calendar", "/platform/reports": "document",
         "/platform/aggregates": "chart", "/platform/attendance/stats": "activity",
         "/platform/grades": "star", "/platform/staff": "users",
         "/platform/notifications": "bell", "/platform/notices": "documents",
@@ -223,6 +225,7 @@ def page(request, user, title, body):
             "/platform/years", "/platform/learners", "/platform/schedule",
             "/platform/schedule/print",
             "/platform/staff", "/platform/profile-completeness",
+            "/platform/schedule/proposals",
         }),
         ("الحضور والتقارير", {
             "/platform/reports", "/platform/aggregates",
@@ -751,6 +754,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     if user["role"] in ("instructor", "educator"):
         actions = [
             ("فتح حصة اليوم", "calendar", "/platform/sessions/today", "green"),
+            ("اقتراح استعمال الزمن", "calendar", "/platform/schedule/proposals", "purple"),
             ("تقرير الحصة", "document", "/platform/sessions/today", "blue"),
             ("تقاريري", "documents", "/platform/reports", "purple"),
         ]
@@ -1839,6 +1843,11 @@ def schedule_page(request:Request, center_id:int|None=None,
                  + field("held_on", "تاريخ الحصة", "date"), "فتح الحصة")
             if not slot.canceled else "مؤرشفة / ملغاة"
         )
+        if user["role"] in ("instructor", "educator") and not slot.canceled:
+            action += (
+                f' <a class="button" href="/platform/schedule/{slot.id}/propose">'
+                "اقتراح تعديل حصتي</a>"
+            )
         if user["role"] in ("admin", "coordinator") and not slot.canceled:
             action += (
                 f' <a class="button" href="/platform/schedule/{slot.id}/edit">'
@@ -1867,6 +1876,14 @@ def schedule_page(request:Request, center_id:int|None=None,
         + table(["المسلك","المادة","اليوم","الساعة","المؤطر","النوع","الإجراء"],rows)
         + '</section>'
     )
+    if user["role"] in ("instructor", "educator"):
+        body += (
+            '<section class="pv2-weekly-edit no-print">'
+            '<h2>برمجة حصصي</h2><p>اقترح حصصاً جديدة أو تعديلات، ' 
+            'وسيتولى المنسق أو إدارة الجمعية مراجعتها قبل تفعيلها.</p>'
+            '<a class="button" href="/platform/schedule/proposals">'
+            'إضافة حصة أو متابعة طلباتي</a></section>'
+        )
     if user["role"] in ("admin", "coordinator"):
         staff = db.scalars(select(Staff).where(Staff.enabled.is_(True))).all()
         center_tracks = [
@@ -2739,7 +2756,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             continue
         visible.append(r)
         actions = []
-        if user["role"] == "coordinator" and r.status == "submitted":
+        if user["role"] in ("admin", "coordinator") and r.status == "submitted":
             actions.append(
                 form(f"/platform/reports/{r.id}/review", csrf,
                      '<input type="hidden" name="decision" value="approved">', "مصادقة")
@@ -2809,7 +2826,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             if not center_allowed(user, item.center_id):
                 continue
             actions = []
-            if user["role"] == "coordinator" and item.author_id == user["id"] and item.status in ("draft", "returned"):
+            if user["role"] in ("admin", "coordinator") and item.author_id == user["id"] and item.status in ("draft", "returned"):
                 actions.append(form(f"/platform/summary/{item.id}/submit", csrf, "", "إرسال للإدارة"))
             if user["role"] == "admin" and item.status == "submitted":
                 actions.append(form(
@@ -2838,7 +2855,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             + table(["المركز", "المدة", "من", "إلى", "الحالة", "الإجراء"], summaryrows)
             + '</div></section>'
         )
-        if user["role"] == "coordinator":
+        if user["role"] in ("admin", "coordinator"):
             years = db.scalars(select(Year)).all()
             body += (
                 '<section class="pv2-review-create"><details>'
@@ -2905,7 +2922,8 @@ def review_center_summary(report_id:int,request:Request,token:str=Form(alias="_c
     if r.status!="submitted" or decision not in ("approved","returned"):raise HTTPException(409)
     if decision=="returned" and len(comment.strip())<5:raise HTTPException(422,"سبب الإرجاع إلزامي")
     r.status=decision;r.reviewed_by=user["name"];r.reviewed_at=now();r.review_comment=comment.strip()[:2000]
-    db.add(Notification(staff_id=r.author_id,message=f"تمت مراجعة التقرير الدوري: {STATUS_LABELS[decision]}",target="/platform/reports"))
+    if r.author_id is not None:
+        db.add(Notification(staff_id=r.author_id,message=f"تمت مراجعة التقرير الدوري: {STATUS_LABELS[decision]}",target="/platform/reports"))
     log(db,user,decision,"center_report",r.id,comment);db.commit()
     return redirect("/platform/reports")
 
@@ -2951,7 +2969,7 @@ def grades_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
         for g in grades:
             en=db.get(Enrollment,g.enrollment_id);l=db.get(Learner,en.learner_id)
             action=""
-            if user["role"]=="coordinator" and center_allowed(user,t.center_id) and g.status=="pending":
+            if user["role"] in ("admin", "coordinator") and center_allowed(user,t.center_id) and g.status=="pending":
                 action=form(f"/platform/grades/{g.id}/approve",csrf,"","مصادقة")
             if user["id"]==a.staff_id and g.status=="approved":
                 action+=form(f"/platform/grades/{g.id}/correction",csrf,
@@ -2975,7 +2993,7 @@ def grades_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
            choose("assessment_id","الاختبار",[(a.id,f"{a.title} · {a.subject}") for a in assessments if a.staff_id==user["id"]])+
            field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
            field("score","النقطة من 20","number",extra='min="0" max="20" step="0.01"'),"حفظ نقطة للمراجعة")+'</section>'
-    if user["role"]=="coordinator":
+    if user["role"] in ("admin", "coordinator"):
         pending=db.scalars(select(GradeCorrection).where(GradeCorrection.status=="pending")).all()
         cr=[]
         for item in pending:
@@ -3067,7 +3085,7 @@ def discipline_page(request:Request,db:Session=Depends(get_db),user=Depends(acto
         if not en or not center_allowed(user,en.center_id):continue
         if user["role"] in ("instructor","educator") and inc.staff_id!=user["id"]:continue
         action=""
-        if user["role"]=="coordinator" and inc.status=="pending":
+        if user["role"] in ("admin", "coordinator") and inc.status=="pending":
             action=form(f"/platform/incidents/{inc.id}/review",csrf,
                     '<input type="hidden" name="decision" value="approved">',"اعتماد")
             action+=form(f"/platform/incidents/{inc.id}/review",csrf,
@@ -3092,7 +3110,7 @@ def discipline_page(request:Request,db:Session=Depends(get_db),user=Depends(acto
                 '<input type="hidden" name="decision" value="effective">',"مصادقة إدارة الجمعية")
             action+=form(f"/platform/discipline/{d.id}/approve",csrf,
                 '<input type="hidden" name="decision" value="rejected">'+area("reason","سبب الرفض"),"رفض")
-        if user["role"]=="coordinator" and d.status=="effective":
+        if user["role"] in ("admin", "coordinator") and d.status=="effective":
             action+=form(f"/platform/discipline/{d.id}/early-request",csrf,
                         area("reason","سبب طلب الرفع المبكر"),"طلب رفع مبكر")
             if d.excluded_through and date.today()>d.excluded_through and not d.return_authorized:
@@ -3106,7 +3124,7 @@ def discipline_page(request:Request,db:Session=Depends(get_db),user=Depends(acto
         drows.append([e(db.get(Learner,en.learner_id).full_name),e(d.decision),e(d.minutes),
                       e(f"{d.excluded_from} — {d.excluded_through}"),e(d.status),action])
     body+='<section><h2>قرارات المجلس التأديبي (غير نافذة قبل اعتماد الإدارة)</h2>'+table(["المستفيد","القرار","المحضر","مدة الإقصاء","الحالة","الإجراء"],drows)+'</section>'
-    if user["role"]=="coordinator":
+    if user["role"] in ("admin", "coordinator"):
         body='<section><h2>إحالة قرار مجلس تأديبي لإدارة الجمعية</h2>'+form("/platform/discipline",csrf,
              field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
              area("decision","التوصية / القرار")+area("minutes","محضر المجلس وأسبابه")+
@@ -3216,7 +3234,7 @@ def notices_page(request:Request,db:Session=Depends(get_db),user=Depends(actor))
         en=db.get(Enrollment,n.enrollment_id)
         if not en or not center_allowed(user,en.center_id):continue
         action=""
-        if user["role"]=="coordinator":
+        if user["role"] in ("admin", "coordinator"):
             if n.status=="draft":
                 action+=form(f"/platform/notices/{n.id}/issue",csrf,area("body","صياغة الإشعار المعتمدة"),"اعتماد الإشعار وإصداره")
                 action+=form(f"/platform/notices/{n.id}/defer",csrf,area("reason","سبب التأجيل"),"تأجيل")
@@ -3227,9 +3245,9 @@ def notices_page(request:Request,db:Session=Depends(get_db),user=Depends(actor))
             action+=f' <a class="button" href="/platform/notices/{n.id}/print" target="_blank">طباعة</a>'
         rows.append([e(db.get(Learner,en.learner_id).full_name),e(n.kind),e(n.body),
               e(STATUS_LABELS.get(n.status,n.status)),e(n.delivered_at or "—"),action])
-    body=('<section><h2>المسودات التلقائية لا تعني إصدارًا تلقائيًا</h2><p class="subtle">لا تُرسل الإشعارات إلكترونيًا، وللمنسق وحده اعتماد نص الورقة وإصدارها ثم تسجيل حالة التسليم وتاريخه فقط.</p>'
+    body=('<section><h2>المسودات التلقائية لا تعني إصدارًا تلقائيًا</h2><p class="subtle">لا تُرسل الإشعارات إلكترونيًا، وللمنسق أو إدارة الجمعية اعتماد نص الورقة وإصدارها ثم تسجيل حالة التسليم وتاريخه فقط.</p>'
           +table(["المستفيد","النوع","المضمون","الحالة","تاريخ التسليم","الإجراء"],rows)+'</section>')
-    if user["role"]=="coordinator":
+    if user["role"] in ("admin", "coordinator"):
         body='<section><h2>إشعار يدوي</h2>'+form("/platform/notices",csrf,
          field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
          choose("kind","نوع الإشعار",[("absence","غياب"),("summons","استدعاء"),("discipline","قرار تأديبي"),("other","أخرى")])+
