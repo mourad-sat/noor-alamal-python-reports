@@ -27,7 +27,7 @@ from platform_shift_rotation import (SHIFT_OPTIONS, SHIFT_LABELS, monday, center
 from platform_v2_models import (
     Center, Year, Track, Staff, StaffProfile, Assignment, Learner, Enrollment, Slot, Closure,
     SessionDay, Attendance, Permit, SessionReport, Assessment, Grade,
-    Incident, Discipline, Notice, Notification, Audit, now,
+    Incident, Discipline, Notice, Notification, Audit, Setting, now,
 )
 
 SUBJECTS = ("الرياضيات", "الفرنسية", "العربية")
