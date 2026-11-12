@@ -1793,7 +1793,7 @@ def schedule_page(request:Request, center_id:int|None=None,
         '<h2>التناوب الأسبوعي: صباح / مساء</h2>'
         f'<p>الأسبوع المعروض: {e(viewed_week.isoformat())} · '
         f'{e(weekday_label(db, center.id, viewed_week))}</p>'
-        '<form method="get" action="/platform/schedule">'
+        '<form method="get" action="/platform/schedule?select_week=1">'
         f'<input type="hidden" name="center_id" value="{center.id}">'
         f'<label>اختيار أسبوع <input name="week_of" type="date" value="{viewed_week.isoformat()}"></label>'
         '<button type="submit">عرض الأسبوع</button></form>'
