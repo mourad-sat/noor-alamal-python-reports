@@ -1,5 +1,6 @@
 """Automatic lesson selection cannot invent activity or cross center permissions."""
 from datetime import datetime
+import sys
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from test_app import client
@@ -31,12 +32,12 @@ def session_count():
 
 
 def test_current_session_identifies_today_by_staff_and_local_time(client, monkeypatch):
-    monkeypatch.setattr(platform_v2, "datetime", FrozenClock)
     admin = setup_org(client)
     add_thursday_slot(client, admin, 1, "08:30", "10:30")
     add_thursday_slot(client, admin, 2, "11:00", "13:00")
     signout(client, admin)
     signin(client, "trainer", "strong-test-password-12345")
+    monkeypatch.setattr(sys.modules["platform_v2"], "datetime", FrozenClock)
     assert session_count() == 0
     response = client.get("/platform/sessions/today")
     assert response.status_code == 200, response.text[:400]
@@ -56,11 +57,11 @@ def test_current_session_identifies_today_by_staff_and_local_time(client, monkey
 
 
 def test_opened_current_session_redirects_automatically_to_existing(client, monkeypatch):
-    monkeypatch.setattr(platform_v2, "datetime", FrozenClock)
     admin = setup_org(client)
     add_thursday_slot(client, admin, 1, "08:30", "10:30")
     signout(client, admin)
     staff_csrf = signin(client, "trainer", "strong-test-password-12345")
+    monkeypatch.setattr(sys.modules["platform_v2"], "datetime", FrozenClock)
     opened = post(client, "/platform/sessions", staff_csrf,
                   slot_id=1, held_on="2026-11-12")
     assert opened.status_code == 303
@@ -73,7 +74,6 @@ def test_opened_current_session_redirects_automatically_to_existing(client, monk
 
 
 def test_no_assigned_session_today_has_helpful_manual_fallback(client, monkeypatch):
-    monkeypatch.setattr(platform_v2, "datetime", FrozenClock)
     admin = setup_org(client)
     # Fridays are not considered Thursday sessions.
     response = post(
@@ -84,6 +84,7 @@ def test_no_assigned_session_today_has_helpful_manual_fallback(client, monkeypat
     assert response.status_code == 303
     signout(client, admin)
     signin(client, "trainer", "strong-test-password-12345")
+    monkeypatch.setattr(sys.modules["platform_v2"], "datetime", FrozenClock)
     body = client.get("/platform/sessions/today").text
     assert "ما عندك حتى حصة مبرمجة اليوم" in body
     assert 'href="/platform/schedule"' in body
@@ -91,7 +92,6 @@ def test_no_assigned_session_today_has_helpful_manual_fallback(client, monkeypat
 
 
 def test_admins_and_unauthorized_users_cannot_use_staff_picker(client, monkeypatch):
-    monkeypatch.setattr(platform_v2, "datetime", FrozenClock)
     admin = setup_org(client)
     assert client.get("/platform/sessions/today").status_code == 403
     signout(client, admin)
