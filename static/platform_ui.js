@@ -73,7 +73,43 @@
       button.addEventListener("click", function () { window.print(); });
     });
   }
+  function initializeQuickAttendance() {
+    document.querySelectorAll("[data-quick-attendance]").forEach(function (form) {
+      var selectors = Array.prototype.slice.call(form.querySelectorAll("[data-quick-status]"));
+      var preview = form.querySelector("[data-quick-preview]");
+      var confirmation = form.querySelector("[data-quick-confirmation]");
+      var save = form.querySelector("[data-quick-save]");
+      var summary = form.querySelector("[data-quick-summary]");
+      if (!preview || !confirmation || !save || !summary) return;
+      function update() {
+        var counts = {present: 0, absent: 0, late: 0, unmarked: 0};
+        selectors.forEach(function (selector) {
+          var status = selector.disabled ?
+            form.querySelector('input[type="hidden"][name="' + selector.name + '"]').value :
+            selector.value;
+          if (Object.prototype.hasOwnProperty.call(counts, status)) counts[status]++;
+        });
+        summary.textContent = "حاضرون: " + counts.present +
+          " · غائبون: " + counts.absent +
+          " · متأخرون: " + counts.late +
+          " · لم يُسجَّل: " + counts.unmarked;
+        confirmation.hidden = true;
+        save.disabled = true;
+      }
+      selectors.forEach(function (selector) {
+        selector.addEventListener("change", update);
+      });
+      preview.addEventListener("click", function () {
+        update();
+        confirmation.hidden = false;
+        save.disabled = false;
+        confirmation.scrollIntoView({block: "nearest", behavior: "smooth"});
+      });
+      update();
+    });
+  }
   function onReady() {
+    initializeQuickAttendance();
     initializeTimetablePrinting();
     initializeQuickSearchShortcut();
     document.querySelectorAll("[data-nav-filter]").forEach(initialize);
