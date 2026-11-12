@@ -2135,9 +2135,9 @@ def quick_attendance_form(session_id: int, csrf: str, enrollments: list,
             f'<option value="{code}"'
             + (' selected' if code == status else '')
             + (' disabled' if not old and (
-                enrollment.id in excluded or
+                (enrollment.id in excluded and code != "unmarked") or
                 (enrollment.id in pending and code in ("present", "late"))
-            ) and code not in ("absent", "unmarked") else '')
+            ) else '')
             + f'>{label}</option>'
             for code, label in statuses
         )
