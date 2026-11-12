@@ -2826,7 +2826,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             if not center_allowed(user, item.center_id):
                 continue
             actions = []
-            if user["role"] == "coordinator" and item.author_id == user["id"] and item.status in ("draft", "returned"):
+            if user["role"] in ("admin", "coordinator") and item.author_id == user["id"] and item.status in ("draft", "returned"):
                 actions.append(form(f"/platform/summary/{item.id}/submit", csrf, "", "إرسال للإدارة"))
             if user["role"] == "admin" and item.status == "submitted":
                 actions.append(form(
@@ -2855,7 +2855,7 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             + table(["المركز", "المدة", "من", "إلى", "الحالة", "الإجراء"], summaryrows)
             + '</div></section>'
         )
-        if user["role"] == "coordinator":
+        if user["role"] in ("admin", "coordinator"):
             years = db.scalars(select(Year)).all()
             body += (
                 '<section class="pv2-review-create"><details>'
@@ -2922,7 +2922,8 @@ def review_center_summary(report_id:int,request:Request,token:str=Form(alias="_c
     if r.status!="submitted" or decision not in ("approved","returned"):raise HTTPException(409)
     if decision=="returned" and len(comment.strip())<5:raise HTTPException(422,"سبب الإرجاع إلزامي")
     r.status=decision;r.reviewed_by=user["name"];r.reviewed_at=now();r.review_comment=comment.strip()[:2000]
-    db.add(Notification(staff_id=r.author_id,message=f"تمت مراجعة التقرير الدوري: {STATUS_LABELS[decision]}",target="/platform/reports"))
+    if r.author_id is not None:
+        db.add(Notification(staff_id=r.author_id,message=f"تمت مراجعة التقرير الدوري: {STATUS_LABELS[decision]}",target="/platform/reports"))
     log(db,user,decision,"center_report",r.id,comment);db.commit()
     return redirect("/platform/reports")
 
