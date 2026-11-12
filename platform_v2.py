@@ -523,6 +523,155 @@ def dashboard_neon_charts(snapshot):
     return trend_card, rate_card, rate
 
 
+def dashboard_absence_panel(db: Session, user, centers: list[Center],
+                            today: date | None = None) -> str:
+    """Recent recorded absences with strict role-aware visibility.
+
+    Count actual 'absent' attendance marks from completed calendar dates only;
+    an unrecorded mark is NOT an absence. Show the past 30 days (through
+    yesterday), retaining reports from older archived timetable versions.
+    """
+    today = today or datetime.now(ZoneInfo("Africa/Casablanca")).date()
+    start = today - timedelta(days=30)
+    ids = [center.id for center in centers]
+    title = ("غياب المستفيدين حسب المركز" if user["role"] == "admin" else
+             "أسماء الغائبين في المركز" if user["role"] == "coordinator" else
+             "الغائبون في حصصي السابقة")
+    period = (
+        f'<p class="pv2-absence-period">الفترة: {start.isoformat()} '
+        f'إلى {(today - timedelta(days=1)).isoformat()} · '
+        'سجلات الغياب المسجلة فقط، ولا تُحتسب الحصص الملغاة أو المقبلة.</p>'
+    )
+    if not ids:
+        return (
+            '<section class="pv2-neon-panel pv2-absence-panel">'
+            f'<h2>{title}</h2>' + period +
+            '<p class="pv2-neon-empty">لا توجد مراكز متاحة لحسابك.</p></section>'
+        )
+
+    scoped_filters = [
+        Slot.center_id.in_(ids),
+        SessionDay.held_on >= start,
+        SessionDay.held_on < today,
+        SessionDay.status != "canceled",
+        Attendance.status == "absent",
+        Enrollment.center_id == Slot.center_id,
+        Enrollment.track_id == Slot.track_id,
+    ]
+    if user["role"] in ("educator", "instructor"):
+        authorized = {
+            (assignment.center_id, assignment.track_id)
+            for assignment in user["assignments"]
+        }
+        if not authorized:
+            return (
+                '<section class="pv2-neon-panel pv2-absence-panel">'
+                f'<h2>{title}</h2>' + period +
+                '<p class="pv2-neon-empty">لا توجد حصص مسندة لحسابك.</p></section>'
+            )
+        scoped_filters.extend((
+            Slot.staff_id == user["id"],
+            or_(*(
+                and_(Slot.center_id == center_id, Slot.track_id == track_id)
+                for center_id, track_id in sorted(authorized)
+            )),
+        ))
+
+    def joined(statement):
+        return (
+            statement.select_from(Attendance)
+            .join(SessionDay, SessionDay.id == Attendance.session_id)
+            .join(Slot, Slot.id == SessionDay.slot_id)
+            .join(Enrollment, Enrollment.id == Attendance.enrollment_id)
+            .where(*scoped_filters)
+        )
+
+    if user["role"] == "admin":
+        totals = dict(
+            (center_id, (int(count), int(learners)))
+            for center_id, count, learners in db.execute(
+                joined(select(
+                    Slot.center_id,
+                    func.count(Attendance.id),
+                    func.count(func.distinct(Enrollment.learner_id)),
+                )).group_by(Slot.center_id)
+            ).all()
+        )
+        items = "".join(
+            '<article class="pv2-absence-center">'
+            f'<strong>{e(center.name)}</strong>'
+            f'<span class="pv2-absence-count">{totals.get(center.id, (0, 0))[0]}</span>'
+            '<small>حالة غياب مسجّلة · '
+            f'{totals.get(center.id, (0, 0))[1]} مستفيد مختلف</small>'
+            '<a href="/platform/attendance/stats">عرض تفاصيل المستفيدين والمسالك</a>'
+            '</article>'
+            for center in centers
+        )
+        return (
+            '<section class="pv2-neon-panel pv2-absence-panel" '
+            'aria-label="ملخص الغياب في المراكز">'
+            f'<h2>{title}</h2>' + period +
+            '<div class="pv2-absence-centers">' + items + '</div>'
+            '<p class="pv2-neon-caption">العدد يمثل حالات الغياب، وليس '
+            'عدد المستفيدين الفريدين. الغياب بإذن داخل في الإجمالي؛ '
+            'ولا يُعد الغياب قراراً تأديبياً.</p></section>'
+        )
+
+    total_rows = db.execute(
+        joined(select(func.count(Attendance.id)))
+    ).all()
+    total = int(total_rows[0][0]) if total_rows else 0
+    records = db.execute(
+        joined(select(
+            Learner.full_name,
+            SessionDay.held_on,
+            Slot.subject,
+            Center.name,
+            Track.name,
+            Attendance.permit_id,
+            SessionDay.id,
+        ))
+        .join(Learner, Learner.id == Enrollment.learner_id)
+        .join(Center, Center.id == Slot.center_id)
+        .join(Track, Track.id == Slot.track_id)
+        .order_by(SessionDay.held_on.desc(), SessionDay.id.desc(),
+                  Learner.full_name)
+        .limit(24)
+    ).all()
+    rows = "".join(
+        '<li class="pv2-absence-row">'
+        f'<strong>{e(full_name)}</strong>'
+        f'<span>{e(held_on.isoformat())} · {e(subject)} · '
+        f'{e(track_name)} · {e(center_name)}</span>'
+        f'<small class="{"pv2-absence-excused" if permit_id else "pv2-absence-open"}">'
+        f'{"غياب بإذن" if permit_id else "غياب دون إذن مسجّل"}</small>'
+        f'<a href="/platform/sessions/{session_id}">فتح الحصة</a>'
+        '</li>'
+        for full_name, held_on, subject, center_name, track_name,
+            permit_id, session_id in records
+    )
+    role_note = (
+        "حصصك المسندة فقط في المركزين."
+        if user["role"] in ("instructor", "educator") else
+        "جميع الحصص المسجلة في المركز الذي تشرف عليه."
+    )
+    return (
+        '<section class="pv2-neon-panel pv2-absence-panel" '
+        'aria-label="أسماء الغائبين في الحصص السابقة">'
+        f'<h2>{title} <span class="pv2-absence-total">{total}</span></h2>'
+        + period +
+        f'<p class="pv2-neon-caption">{role_note}</p>'
+        + ('<ol class="pv2-absence-list">' + rows + '</ol>' if records else
+           '<p class="pv2-neon-empty">لا يوجد غياب مسجّل خلال هذه الفترة.</p>')
+        + (f'<p class="pv2-neon-caption">آخر {len(records)} من {total} '
+           'حالة غياب؛ استعمل إحصائيات الحضور لمراجعة بقية السجلات.</p>'
+           if total > len(records) else '')
+        + '<a class="pv2-absence-more" href="/platform/attendance/stats">'
+          'عرض إحصائيات الحضور والغياب</a>'
+        '</section>'
+    )
+
+
 @app.get("/platform", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     """A reference-matched dark dashboard, with truthful role-scoped metrics."""
@@ -563,6 +712,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         select(Track).where(Track.center_id.in_(center_ids))
     ).all()
     snapshot = dashboard_attendance_snapshot(db, center_ids)
+    absences_section = dashboard_absence_panel(db, user, centers)
     trend_card, ring_card, attendance_rate = dashboard_neon_charts(snapshot)
     enrollment_totals = {center.id: 0 for center in centers}
     for enrollment in enrollments:
@@ -647,7 +797,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         '<div class="pv2-neon-dashboard">' + intro + todo + metrics +
         '<div class="pv2-neon-charts">' + trend_card + ring_card + '</div>' +
         '<div class="pv2-neon-bottom">' + activity + quick + '</div>' +
-        centers_section + '</div>'
+        absences_section + centers_section + '</div>'
     )
     return page(request, user, "لوحة القيادة", content)
 
