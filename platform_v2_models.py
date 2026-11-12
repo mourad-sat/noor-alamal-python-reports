@@ -135,6 +135,7 @@ class ScheduleProposal(Base):
     track_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_tracks")))
     staff_id: Mapped[int] = mapped_column(ForeignKey(fk("v2_staff")), index=True)
     slot_id: Mapped[int | None] = mapped_column(ForeignKey(fk("v2_slots")), nullable=True)
+    baseline: Mapped[str] = mapped_column(String(350), default="")
     subject: Mapped[str] = mapped_column(String(90))
     weekday: Mapped[int] = mapped_column(Integer)
     starts_at: Mapped[str] = mapped_column(String(5))
