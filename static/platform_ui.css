@@ -1038,3 +1038,33 @@
 .pv2-neon-shell[data-dashboard-appearance="light"] .pv2-absence-count{color:#a74539}
 @media(max-width:850px){.pv2-neon-shell .pv2-absence-list{grid-template-columns:minmax(0,1fr)}}
 @media print{.pv2-neon-shell .pv2-absence-row{break-inside:avoid}}
+
+
+/* Quick attendance: review absent/late learners and save the session once. */
+.pv2-neon-shell .pv2-quick-attendance{border:1px solid #2f7777;border-radius:15px;padding:22px;background:linear-gradient(145deg,#102d3e,#14263c);margin:18px 0}
+.pv2-neon-shell .pv2-quick-attendance h2{margin:0 0 10px;font-size:23px}
+.pv2-neon-shell .pv2-quick-attendance .pv2-section-head p{font-size:14px;color:#c2d7e4;line-height:1.7}
+.pv2-neon-shell .pv2-quick-summary{padding:12px 16px;border:1px solid #3e8293;border-radius:11px;background:#18394d;color:#d5ffff;font-size:15px;font-weight:800;margin-bottom:17px}
+.pv2-neon-shell .pv2-quick-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pv2-neon-shell .pv2-quick-row{display:flex;align-items:center;gap:12px;justify-content:space-between;min-width:0;padding:13px 12px;border:1px solid #33566e;border-radius:11px;background:#152d42}
+.pv2-neon-shell .pv2-quick-row label{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.pv2-neon-shell .pv2-quick-row strong{color:#f8fbff;font-size:14px;overflow-wrap:anywhere}
+.pv2-neon-shell .pv2-quick-row small{color:#a8c2d7;font-size:11px;line-height:1.5}
+.pv2-neon-shell .pv2-quick-row .pv2-quick-warning{color:#ffb4a8}
+.pv2-neon-shell .pv2-quick-row select{width:125px;max-width:50%;padding:10px 8px;border:1px solid #51788c;border-radius:9px;background:#193d55;color:#fff;font-size:14px}
+.pv2-neon-shell .pv2-quick-row select:disabled{opacity:.7}
+.pv2-neon-shell .pv2-quick-actions{display:flex;align-items:center;flex-wrap:wrap;gap:13px;margin-top:18px}
+.pv2-neon-shell .pv2-quick-actions [data-quick-confirmation]{flex-basis:100%;border:1px solid #28948c;border-radius:10px;padding:9px 13px;background:#194c48}
+.pv2-neon-shell .pv2-quick-actions [data-quick-confirmation][hidden]{display:none}
+.pv2-neon-shell .pv2-quick-actions [data-quick-save]:disabled{opacity:.5;cursor:not-allowed}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-attendance{background:#f5fbfc;border-color:#bad2d8}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-attendance .pv2-section-head p{color:#345a6e}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-summary{background:#e5f5f3;color:#195354;border-color:#b6d8db}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-row{background:#fff;border-color:#cadde3}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-row strong{color:#224659}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-row small{color:#4b7384}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-row select{background:#fff;color:#1a4055}
+.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-quick-actions [data-quick-confirmation]{background:#e2f5ec;color:#155d4e}
+@media(max-width:850px){.pv2-neon-shell .pv2-quick-list{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:500px){.pv2-neon-shell .pv2-quick-attendance{padding:13px}.pv2-neon-shell .pv2-quick-row{flex-direction:column;align-items:stretch}.pv2-neon-shell .pv2-quick-row select{width:100%;max-width:none}}
+@media print{.pv2-neon-shell .pv2-quick-row{break-inside:avoid}}
