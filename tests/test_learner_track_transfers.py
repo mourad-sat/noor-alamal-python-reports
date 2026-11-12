@@ -54,3 +54,31 @@ def test_transfer_rejects_cross_center_same_track_missing_reason_and_staff(clien
     assert client.get(URL).status_code == 403
     assert post(client, URL, coord, track_id=3,
                 reason="سبب واضح للنقل", confirmation="نعم").status_code == 403
+
+
+def test_transfer_protects_existing_attendance_history(client):
+    admin = setup_org(client)
+    assert post(client, "/platform/tracks", admin,
+                year_id=1, center_id=1, name="مسلك جديد").status_code == 303
+    assert post(client, "/platform/learners", admin,
+                full_name="مستفيد له تاريخ حضور", year_id=1, track_id=1).status_code == 303
+    assert post(client, "/platform/schedule", admin,
+                track_id=1, staff_id=3, subject="مهني", weekday=4,
+                starts_at="08:00", ends_at="10:00",
+                reason="جدولة الحصص الرسمية").status_code == 303
+    signout(client, admin)
+    instructor = signin(client, "trainer", PASS)
+    assert post(client, "/platform/sessions", instructor, slot_id=1,
+                held_on="2026-11-06").status_code == 303
+    assert post(client, "/platform/sessions/1/attendance", instructor,
+                enrollment_id=1, status="present").status_code == 303
+    signout(client, instructor)
+    admin = signin(client, "admin", "correct-password")
+    result = post(client, URL, admin, track_id=3,
+                  reason="طلب تغيير المسلك بعد التسجيل",
+                  confirmation="نعم")
+    assert result.status_code == 409
+    from app import engine
+    from platform_v2_models import Enrollment
+    with Session(engine) as db:
+        assert db.get(Enrollment, 1).track_id == 1
