@@ -108,6 +108,12 @@ STYLE = """
 .if-bar-track{background:#e1ecee;border-radius:6px;height:13px;overflow:hidden}
 .if-bar-fill{background:#198b7e;height:100%}
 .if-muted{font-size:12px;color:#526e7a}
+@media(max-width:650px){
+.if-dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.if-bar{grid-template-columns:minmax(95px,35%) 1fr 30px;gap:5px;font-size:11px}
+.if-head h1{font-size:17px}
+.if-sheet .table-scroll{max-width:100%;-webkit-overflow-scrolling:touch}
+}
 @media print{
  .if-bg{background:white}.if-actions,.no-print{display:none!important}
  .if-paper{padding:0;margin:0;box-shadow:none;max-width:none}
