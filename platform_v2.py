@@ -187,6 +187,7 @@ def page(request, user, title, body):
         menu.append(("تغيير كلمة المرور", "/platform/password"))
     if user["role"] in ("admin","coordinator"):
         menu.append(("استكمال ملفات المستفيدين", "/platform/profile-completeness"))
+        menu.append(("التقرير السنوي الشامل", "/platform/annual-report"))
         menu.append(("مراجعة تصحيحات الحضور", "/platform/attendance/corrections"))
         menu.append(("استيراد Excel", "/platform/import"))
         menu.append(("كشوف النقط PDF", "/platform/exports/grades"))
@@ -203,7 +204,8 @@ def page(request, user, title, body):
         "/platform/schedule": "calendar", "/platform/schedule/print": "calendar",
         "/platform/schedule/proposals": "calendar", "/platform/reports": "document",
         "/platform/activity-album": "folder",
-        "/platform/aggregates": "chart", "/platform/attendance/stats": "activity",
+        "/platform/aggregates": "chart",
+        "/platform/annual-report": "document", "/platform/attendance/stats": "activity",
         "/platform/integration": "chart", "/platform/grades": "star", "/platform/staff": "users",
         "/platform/notifications": "bell", "/platform/notices": "documents",
         "/platform/discipline": "shield", "/platform/settings": "settings",
