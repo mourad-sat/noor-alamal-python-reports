@@ -77,6 +77,7 @@ border:0;padding:9px 14px;border-radius:8px;text-decoration:none;cursor:pointer}
 
 def annual_context(db: Session, user, year_id: int | None, center_id: int | None):
     require_role(user, "admin", "coordinator")
+    center_id = center_id or None
     years = db.scalars(select(Year).order_by(Year.starts_on.desc())).all()
     if not years:
         return None, years, [], []
@@ -411,6 +412,7 @@ def annual_report(request: Request, year_id: int | None = None,
     year, years, centers, tracks = annual_context(
         db, user, year_id, center_id
     )
+    center_id = center_id or None
     if year is None:
         return page(request, user, "التقرير السنوي الشامل",
                     '<section><p>لا توجد سنة تكوينية مسجلة بعد.</p></section>')
@@ -422,7 +424,7 @@ def annual_report(request: Request, year_id: int | None = None,
     allowed_centers = [c for c in db.scalars(select(Center)).all()
                        if center_allowed(user, c.id)]
     center_options = (
-        '<option value="">جميع المراكز المخوّل بها</option>' + "".join(
+        '<option value="0">جميع المراكز المخوّل بها</option>' + "".join(
             f'<option value="{c.id}" {"selected" if c.id == center_id else ""}>'
             f'{e(c.name)}</option>' for c in allowed_centers
         )
