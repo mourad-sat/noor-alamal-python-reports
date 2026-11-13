@@ -123,3 +123,42 @@ def test_photo_selection_csrf_protection_and_cross_center_deny(client):
     assert post(client, "/platform/activity-album/1/select", coord2).status_code == 403
     assert client.get("/platform/attachments/1/view").status_code == 403
     signout(client, coord2)
+
+
+def test_recent_reports_have_mobile_and_print_layouts(client):
+    setup_org(client)
+    checks = [
+        ("/platform/annual-report", "annual-kpis", "@media(max-width:620px)"),
+        ("/platform/integration", "if-dashboard-grid", "@media(max-width:650px)"),
+    ]
+    for url, class_name, responsive in checks:
+        response = client.get(url)
+        assert response.status_code == 200
+        assert class_name in response.text
+        assert responsive in response.text
+        assert "@media print" in response.text
+    from app import engine
+    from sqlalchemy.orm import Session
+    from platform_v2_models import Enrollment, Learner
+    from datetime import date
+    with Session(engine) as db:
+        learner = Learner(full_name="المستفيد التجريبي للجوال")
+        db.add(learner)
+        db.flush()
+        db.add(Enrollment(learner_id=learner.id, year_id=1,
+                          center_id=1, track_id=1,
+                          enrolled_on=date(2026, 9, 1)))
+        db.commit()
+    skills = client.get("/platform/learners/1/skills")
+    assert skills.status_code == 200
+    assert "@media(max-width:600px)" in skills.text
+    assert "@media print" in skills.text
+
+
+def test_annual_report_query_volume_is_bounded_for_center_dashboard(client):
+    setup_org(client)
+    from test_performance_and_mobile import QueryCounter
+    with QueryCounter() as counter:
+        report = client.get("/platform/annual-report?year_id=1")
+    assert report.status_code == 200
+    assert counter.count <= 35, counter.count
