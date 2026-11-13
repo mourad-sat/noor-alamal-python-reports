@@ -1700,6 +1700,10 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     state='<span class="danger">أحمر: غياب معلق</span>' if pending else '<span class="good">أخضر: الغياب مسوى</span>'
     if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
     body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
+    body += (f'<section><h2>تقييم المهارات والكفايات</h2>'
+             '<p>تقييم أولي ومرحلي ونهائي للمهارات الأساسية مع مبيان مقارنة وطباعة.</p>'
+             f'<a class="button" href="/platform/learners/{en.id}/skills">'
+             'فتح شبكة تقييم المهارات</a></section>')
     body += (f'<section><h2>التتبع التربوي الفردي</h2>'
              '<p>حصيلة المواظبة والنقط المعتمدة وتطورها عبر الأشهر، مع إمكانية الطباعة.</p>'
              f'<a class="button" href="/platform/learners/{en.id}/progress">'
