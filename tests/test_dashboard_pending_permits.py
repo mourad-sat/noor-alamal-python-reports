@@ -39,7 +39,10 @@ def test_pending_absent_learners_can_get_permits_from_admin_dashboard(client):
                 reason="قصير").status_code == 422
     assert post(client, "/platform/learners/1/permit", admin,
                 reason="تمت مراجعة الغياب والموافقة على استئناف الحضور").status_code == 303
-    assert "مستفيد غائب تجريبي" not in client.get("/platform").text
+    refreshed = client.get("/platform").text
+    assert "مستفيد غائب تجريبي" in refreshed
+    assert "غياب بإذن" in refreshed
+    assert 'action="/platform/learners/1/permit"' not in refreshed
     assert "مغطى بإذن" in client.get("/platform/learners/1").text
 
 

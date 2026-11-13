@@ -529,7 +529,7 @@ def dashboard_neon_charts(snapshot):
 
 
 def dashboard_absence_panel(db: Session, user, centers: list[Center],
-                            today: date | None = None) -> str:
+                            today: date | None = None, csrf: str = "") -> str:
     """Recent recorded absences with strict role-aware visibility.
 
     Count actual 'absent' attendance marks from completed calendar dates only;
@@ -591,6 +591,60 @@ def dashboard_absence_panel(db: Session, user, centers: list[Center],
             .where(*scoped_filters)
         )
 
+    # A compact row per recorded absence, with a permit action only for
+    # authorized administrators/coordinators and genuinely unresolved marks.
+    # Issuing the permit keeps the historical absence intact.
+    def absence_table() -> str:
+        records = db.execute(
+            joined(select(
+                Enrollment.id, Learner.full_name, Center.name, Track.name,
+                Slot.subject, Slot.starts_at, Slot.ends_at,
+                SessionDay.held_on, SessionDay.id, Attendance.permit_id,
+            ))
+            .join(Learner, Learner.id == Enrollment.learner_id)
+            .join(Center, Center.id == Slot.center_id)
+            .join(Track, Track.id == Slot.track_id)
+            .order_by(SessionDay.held_on.desc(), SessionDay.id.desc(),
+                      Learner.full_name)
+            .limit(50)
+        ).all()
+        rows = []
+        for (enrollment_id, name, center_name, track_name, subject,
+             starts_at, ends_at, held_on, session_id, permit_id) in records:
+            if permit_id is not None:
+                action = '<span class="pv2-absence-excused">غياب بإذن</span>'
+            elif csrf:
+                action = form(
+                    f"/platform/learners/{enrollment_id}/permit", csrf,
+                    '<label>سبب إعطاء الإذن'
+                    '<textarea name="reason" minlength="6" maxlength="2000" '
+                    'rows="2" required placeholder="اكتب سبب الإذن"></textarea></label>',
+                    "إعطاء إذن الدخول",
+                )
+            else:
+                action = '<span class="pv2-absence-open">غياب دون إذن</span>'
+            rows.append([
+                e(center_name),
+                f'<a href="/platform/learners/{enrollment_id}">{e(name)}</a>',
+                e(track_name),
+                f'<a href="/platform/sessions/{session_id}">{e(subject)}</a>'
+                f'<small class="pv2-absence-session-time" dir="ltr">'
+                f'{e(starts_at)}–{e(ends_at)}</small>',
+                e(held_on.isoformat()),
+                action,
+            ])
+        if not records:
+            return '<p class="pv2-neon-empty">لا يوجد غياب مسجّل خلال هذه الفترة.</p>'
+        return (
+            '<div class="pv2-absence-table">'
+            + table(["المركز", "اسم المستفيد", "المسلك", "حصة الغياب",
+                     "تاريخ الغياب", "إعطاء الإذن"], rows)
+            + '</div>'
+            + ('<p class="pv2-neon-caption">نعرض آخر 50 حالة غياب؛ '
+               '<a href="/platform/attendance/stats">عرض باقي السجلات</a>.</p>'
+               if len(rows) == 50 else '')
+        )
+
     if user["role"] == "admin":
         totals = dict(
             (center_id, (int(count), int(learners)))
@@ -619,7 +673,9 @@ def dashboard_absence_panel(db: Session, user, centers: list[Center],
             '<div class="pv2-absence-centers">' + items + '</div>'
             '<p class="pv2-neon-caption">العدد يمثل حالات الغياب، وليس '
             'عدد المستفيدين الفريدين. الغياب بإذن داخل في الإجمالي؛ '
-            'ولا يُعد الغياب قراراً تأديبياً.</p></section>'
+            'ولا يُعد الغياب قراراً تأديبياً.</p>'
+            '<h3 class="pv2-absence-table-heading">جدول الغائبين حسب المركز</h3>'
+            + absence_table() + '</section>'
         )
 
     total_rows = db.execute(
@@ -666,8 +722,9 @@ def dashboard_absence_panel(db: Session, user, centers: list[Center],
         f'<h2>{title} <span class="pv2-absence-total">{total}</span></h2>'
         + period +
         f'<p class="pv2-neon-caption">{role_note}</p>'
-        + ('<ol class="pv2-absence-list">' + rows + '</ol>' if records else
-           '<p class="pv2-neon-empty">لا يوجد غياب مسجّل خلال هذه الفترة.</p>')
+        + (absence_table() if user["role"] == "coordinator" else
+           ('<ol class="pv2-absence-list">' + rows + '</ol>' if records else
+            '<p class="pv2-neon-empty">لا يوجد غياب مسجّل خلال هذه الفترة.</p>'))
         + (f'<p class="pv2-neon-caption">آخر {len(records)} من {total} '
            'حالة غياب؛ استعمل إحصائيات الحضور لمراجعة بقية السجلات.</p>'
            if total > len(records) else '')
@@ -774,7 +831,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         select(Track).where(Track.center_id.in_(center_ids))
     ).all()
     snapshot = dashboard_attendance_snapshot(db, center_ids)
-    absences_section = dashboard_absence_panel(db, user, centers)
+    absences_section = dashboard_absence_panel(db, user, centers, csrf=request.session["csrf"])
     pending_permits_section = dashboard_pending_permits(db, user, center_ids, request.session["csrf"])
     trend_card, ring_card, attendance_rate = dashboard_neon_charts(snapshot)
     enrollment_totals = {center.id: 0 for center in centers}
