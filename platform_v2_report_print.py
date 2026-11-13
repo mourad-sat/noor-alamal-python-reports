@@ -267,7 +267,7 @@ def print_approved_session_report(report_id:int,request:Request,
     <div class="report-title"><strong>عنوان الحصة:</strong> {e(report.subject)}</div>
     {sections}
     <div class="session-report-qr" aria-label="التحقق الإلكتروني من التقرير">
-      <div class="qr">{code}<div><small>امسح رمز QR للتحقق من التقرير</small></div>
+      <div class="qr">{code}<div><small>رمز تحقق إلكتروني — امسحه للتحقق من التقرير</small></div>
         <small><a href="{e(verify_url)}">رابط التحقق الإلكتروني</a></small></div>
     </div></article></body></html>'''
     return HTMLResponse(html)
