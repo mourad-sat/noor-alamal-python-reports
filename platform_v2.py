@@ -1580,6 +1580,7 @@ def learners_page(request: Request, track_id: int | None = None,
         if disciplinary:
             status += ' · <span class="danger">إقصاء تأديبي</span>'
         details = f'<a href="/platform/learners/{en.id}">فتح الملف</a>'
+        details += f' · <a href="/platform/learners/{en.id}/progress">بطاقة التتبع</a>'
         if user["role"] in ("admin", "coordinator"):
             details += f' · <a href="/platform/learners/{en.id}/card">طباعة البطاقة</a>'
         rows.append([e(learner.full_name), e(learner.source_code) or "—", status, details])
@@ -1699,6 +1700,10 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     state='<span class="danger">أحمر: غياب معلق</span>' if pending else '<span class="good">أخضر: الغياب مسوى</span>'
     if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
     body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
+    body += (f'<section><h2>التتبع التربوي الفردي</h2>'
+             '<p>حصيلة المواظبة والنقط المعتمدة وتطورها عبر الأشهر، مع إمكانية الطباعة.</p>'
+             f'<a class="button" href="/platform/learners/{en.id}/progress">'
+             'فتح بطاقة التتبع الفردي</a></section>')
     if user["role"] in ("admin","coordinator"):
         from platform_v2_models import LearnerPhoto
         has_photo = db.get(LearnerPhoto, l.id) is not None

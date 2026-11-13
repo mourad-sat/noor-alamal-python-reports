@@ -18,7 +18,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv('ADMIN_USERNAME', 'admin')
     monkeypatch.delenv('VERCEL', raising=False)
     sys.path.insert(0, str(PROJECT))
-    for name in ('platform_v2', 'platform_v2_models', 'platform_v2_imports', 'platform_v2_exports', 'platform_v2_aggregates', 'platform_v2_auto_summaries', 'platform_v2_attachments', 'platform_v2_staff_profiles', 'platform_v2_learner_cards', 'platform_v2_attendance_corrections', 'platform_v2_privacy', 'platform_v2_schedule_exceptions', 'platform_v2_report_print', 'platform_v2_attendance_stats', 'platform_v2_timetable_print', 'platform_v2_schedule_proposals', 'platform_v2_learner_transfers', 'app'):
+    for name in ('platform_v2', 'platform_v2_models', 'platform_v2_imports', 'platform_v2_exports', 'platform_v2_aggregates', 'platform_v2_auto_summaries', 'platform_v2_attachments', 'platform_v2_staff_profiles', 'platform_v2_learner_cards', 'platform_v2_learner_progress', 'platform_v2_attendance_corrections', 'platform_v2_privacy', 'platform_v2_schedule_exceptions', 'platform_v2_report_print', 'platform_v2_attendance_stats', 'platform_v2_timetable_print', 'platform_v2_schedule_proposals', 'platform_v2_learner_transfers', 'app'):
         sys.modules.pop(name, None)
     application = importlib.import_module('app')
     with TestClient(application.app, follow_redirects=False) as client:
