@@ -158,6 +158,7 @@ def test_annual_year_validation_and_read_only(client):
     assert client.get("/platform/annual-report?year_id=999").status_code == 404
     assert client.get("/platform/annual-report?year_id=1&center_id=999").status_code == 403
     assert client.get("/platform/annual-report?year_id=1&center_id=1").status_code == 200
+    assert client.get("/platform/annual-report?year_id=1&center_id=0").status_code == 200
     from app import engine
     from sqlalchemy.orm import Session
     from platform_v2_models import Grade, SessionReport, IntegrationFollowup
