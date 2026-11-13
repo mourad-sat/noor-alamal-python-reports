@@ -74,7 +74,7 @@ def test_generate_weekly_draft_only_approved_and_edit_then_approve(client):
                 decision="approved").status_code == 303
     official = client.get("/platform/summary/2/print")
     assert "تمت المصادقة من طرف إدارة الجمعية" in official.text
-    assert "توقيع منسق المركز" in official.text
+    assert "توقيع منسق المركز" not in official.text
 
 
 def test_monthly_draft_scoped_by_center_and_year(client):
