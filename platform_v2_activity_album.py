@@ -73,6 +73,7 @@ def photo_query(center_id=None, track_id=None, start=None, end=None, mode="selec
             Attachment.content_type.in_(PHOTO_TYPES),
             SessionReport.status == "approved",
             SessionDay.status != "canceled",
+            Slot.canceled.is_(False),
             Slot.center_id == Track.center_id,
             Slot.year_id == Track.year_id,
         )
@@ -259,7 +260,7 @@ def album_select_photo(request: Request, attachment_id: int,
     track = db.get(Track, slot.track_id)
     if (
         report.status != "approved" or day.status == "canceled"
-        or slot.center_id != track.center_id or slot.year_id != track.year_id
+        or slot.canceled or slot.center_id != track.center_id or slot.year_id != track.year_id
         or photo.content_type not in PHOTO_TYPES
     ):
         raise HTTPException(409, "لا يمكن اختيار صورة خارج تقرير حصة معتمد وسليم")
