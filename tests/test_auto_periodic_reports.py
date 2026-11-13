@@ -86,7 +86,7 @@ def test_monthly_draft_scoped_by_center_and_year(client):
                   anchor="2026-11-14")
     assert result.status_code == 303
     assert "تمارين جماعية في التواصل" in client.get(result.headers["location"]).text
-    assert "2026-11-01" in client.get(result.headers["location"]).text or True
+    assert "2026-11-01" in client.get(result.headers["location"]).text
     assert post(client, "/platform/summary/auto", coord,
                 year_id=1, center_id=2, period_type="monthly",
                 anchor="2026-11-14").status_code == 403
