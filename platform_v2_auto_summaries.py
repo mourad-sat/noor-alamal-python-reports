@@ -141,6 +141,7 @@ def edit_generated_summary(request: Request, report_id: int,
     if report.author_id != user["id"] or report.status not in ("draft", "returned"):
         raise HTTPException(403, "هذا التقرير غير قابل للتعديل من حسابك")
     center = db.get(Center, report.center_id)
+    from platform_v2_summary_visuals import visual_report_sections
     title = "تعديل ومراجعة مسودة التقرير الدوري"
     body = (
         '<section><h2>مراجعة التقرير قبل إرساله للمصادقة</h2>'
@@ -155,6 +156,11 @@ def edit_generated_summary(request: Request, report_id: int,
         + f'<p><a class="button" href="/platform/summary/{report.id}/print">'
           'معاينة وطباعة المسودة</a></p>'
         + '</section>'
+        + '<section><h2>معاينة الجداول والمبيانات والصور</h2>'
+          '<p class="subtle">تظهر الجداول والمبيانات تلقائياً من السجلات المعتمدة، '
+          'والصور التي اختارها المنسق فقط. ويمكنك تحرير النص أعلاه.</p>'
+          '<p><a class="button" href="/platform/summary/'
+          + str(report.id) + '/print">عرض التصميم الجاهز للطباعة</a></p></section>'
     )
     return page(request, user, title, body)
 
@@ -193,6 +199,8 @@ def print_generated_summary(report_id: int, db: Session = Depends(get_db),
         if is_approved else
         '<p class="draft">مسودة غير مصادق عليها — للاطلاع والمراجعة فقط</p>'
     )
+    from platform_v2_summary_visuals import visual_report_sections
+    visuals = visual_report_sections(db, report)
     paragraphs = "".join(
         f'<p>{e(line) if line.strip() else "&nbsp;"}</p>'
         for line in report.analysis.splitlines()
@@ -223,8 +231,34 @@ def print_generated_summary(report_id: int, db: Session = Depends(get_db),
     .approval{{border-top:1px solid #bdd9d9;padding-top:12px;font-weight:bold;color:#087868}}
     .draft{{padding:12px;background:#fff1e7;border:1px solid #e0b998;color:#955232}}
     .signatures{{display:flex;justify-content:space-between;gap:16px;margin-top:26px;font-size:12px}}
+    .visual-section{{margin-top:20px;break-inside:auto}}
+    .visual-section h2{{font-size:16px;margin:18px 0 10px;color:#146578;border-bottom:1px solid #c7e1e5;padding-bottom:6px}}
+    .visual-section h3{{font-size:13px;margin:15px 0 8px;color:#215269}}
+    .indicator-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}}
+    .indicator{{border:1px solid #c6dede;border-radius:7px;background:#f0f7f7;padding:9px;break-inside:avoid}}
+    .indicator span{{display:block;font-size:10px;color:#466b78}}
+    .indicator strong{{display:block;font-size:21px;color:#1a6574}}
+    .chart{{width:100%;height:24px;border-radius:5px;overflow:hidden;display:flex;background:#e4edf0}}
+    .chart .bar{{height:100%}}
+    .chart .present{{background:#168578}}
+    .chart .absent{{background:#d69a43}}
+    .chart-key,.note,.no-data{{font-size:11px;color:#526f7a;margin:7px 0 12px}}
+    .track-bar-row{{display:grid;grid-template-columns:27% 1fr 32px;gap:10px;align-items:center;margin:9px 0;font-size:11px;break-inside:avoid}}
+    .track-bar-bg{{height:14px;background:#e6eef1;border-radius:5px;overflow:hidden}}
+    .track-bar{{height:100%;background:#1a8094;border-radius:5px}}
+    table{{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}}
+    th,td{{border:1px solid #c6d9df;padding:7px 6px;text-align:right;vertical-align:top;overflow-wrap:anywhere}}
+    th{{background:#e9f3f4;color:#18556a}}
+    table tr{{break-inside:avoid;page-break-inside:avoid}}
+    thead{{display:table-header-group}}
+    .gallery{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
+    .gallery figure{{margin:0;border:1px solid #c9dadd;padding:7px;break-inside:avoid}}
+    .gallery img{{width:100%;height:180px;object-fit:contain;display:block}}
+    .gallery figcaption{{font-size:10px;color:#506d7a;margin-top:4px;overflow-wrap:anywhere}}
     @media print{{body{{background:white}}.controls{{display:none}}.paper{{max-width:none;
-      min-height:0;margin:0;padding:0;box-shadow:none}}.details,header{{break-inside:avoid}}}}
+      min-height:0;margin:0;padding:0;box-shadow:none}}.details,header{{break-inside:avoid}}
+      .indicator,th{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+      .chart .bar,.track-bar{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
     </style></head><body>
     <nav class="controls"><a href="/platform/reports">العودة للتقارير</a>
     <button type="button" onclick="window.print()">طباعة / حفظ PDF</button></nav>
@@ -234,7 +268,9 @@ def print_generated_summary(report_id: int, db: Session = Depends(get_db),
     <h1>التقرير {e(period_label)} لأنشطة المركز</h1>
     <div class="details">المركز: {e(center.name)} · السنة: {e(year.label)} ·
     من: {e(report.period_start)} إلى: {e(report.period_end)} · رقم التقرير: {report.id}</div>
-    <div class="content">{paragraphs}</div>{stamp}
+    {visuals}
+    <section class="visual-section"><h2>التحليل والخلاصات والتوصيات</h2>
+    <div class="content">{paragraphs}</div></section>{stamp}
     {('<div class="signatures"><span>توقيع منسق المركز: ................</span>'
       '<span>ختم ومصادقة الجمعية: ................</span></div>' if is_approved and report.period_type == "monthly" else '')}
     </main></body></html>"""
