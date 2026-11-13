@@ -107,22 +107,22 @@ def visual_report_sections(db: Session, report) -> str:
             'يمكن للمنسق اختيار الصور من مرفقات تقارير الحصص المعتمدة.</p>'
         )
 
-    return (
-        '<section class="visual-section">'
-        '<h2>مؤشرات الفترة</h2>'
-        '<div class="indicator-grid">' + cards + '</div>'
-        '<h3>مبيان توزيع سجلات الحضور والغياب</h3>' + graph
+    return "".join([
+        '<section class="visual-section">',
+        '<h2>مؤشرات الفترة</h2>',
+        '<div class="indicator-grid">', cards, '</div>',
+        '<h3>مبيان توزيع سجلات الحضور والغياب</h3>', graph,
         '<p class="note">تحسب النسبة من سجلات الحضور والغياب المدخلة '
-        'داخل الحصص المعتمدة، ولا تمثل نسبة المستفيدين الفريدين.</p>'
-        '<h3>عدد الحصص المعتمدة حسب المسلك</h3>' + track_chart
-        '</section>'
-        '<section class="visual-section">'
-        '<h2>جدول الأنشطة المنجزة والمصادق عليها</h2>'
+        'داخل الحصص المعتمدة، ولا تمثل نسبة المستفيدين الفريدين.</p>',
+        '<h3>عدد الحصص المعتمدة حسب المسلك</h3>', track_chart,
+        '</section>',
+        '<section class="visual-section">',
+        '<h2>جدول الأنشطة المنجزة والمصادق عليها</h2>',
         '<table><thead><tr><th>التاريخ</th><th>المسلك</th>'
-        '<th>المادة</th><th>النشاط المنجز</th><th>مرجع الحصة</th></tr></thead>'
-        '<tbody>' + activity_rows + '</tbody></table></section>'
-        '<section class="visual-section">'
-        '<h2>الصور التوثيقية المختارة</h2>'
-        '<div class="gallery">' + gallery + '</div>'
-        '</section>'
-    )
+        '<th>المادة</th><th>النشاط المنجز</th><th>مرجع الحصة</th></tr></thead>',
+        '<tbody>', activity_rows, '</tbody></table></section>',
+        '<section class="visual-section">',
+        '<h2>الصور التوثيقية المختارة</h2>',
+        '<div class="gallery">', gallery, '</div>',
+        '</section>',
+    ])
