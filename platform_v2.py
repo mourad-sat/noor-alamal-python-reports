@@ -677,6 +677,63 @@ def dashboard_absence_panel(db: Session, user, centers: list[Center],
     )
 
 
+def dashboard_pending_permits(db: Session, user, center_ids: list[int], csrf: str) -> str:
+    """One row per learner with unresolved absence; center-scoped, no auto-approval."""
+    if user["role"] not in ("admin", "coordinator"):
+        return ""
+    if not center_ids:
+        return ('<section class="pv2-neon-panel"><h2>الغائبون الذين ينتظرون إذن الدخول</h2>'
+                '<p class="pv2-neon-empty">لا توجد مراكز مسندة لحسابك.</p></section>')
+    pending = db.execute(
+        select(
+            Enrollment.id, Learner.full_name, Center.name, Track.name,
+            func.count(Attendance.id), func.max(SessionDay.held_on),
+        )
+        .select_from(Attendance)
+        .join(Enrollment, Enrollment.id == Attendance.enrollment_id)
+        .join(Learner, Learner.id == Enrollment.learner_id)
+        .join(Center, Center.id == Enrollment.center_id)
+        .join(Track, Track.id == Enrollment.track_id)
+        .join(SessionDay, SessionDay.id == Attendance.session_id)
+        .where(
+            Enrollment.center_id.in_(center_ids),
+            Attendance.status == "absent",
+            Attendance.permit_id.is_(None),
+        )
+        .group_by(Enrollment.id, Learner.full_name, Center.name, Track.name)
+        .order_by(func.max(SessionDay.held_on).desc(), Learner.full_name)
+        .limit(50)
+    ).all()
+    items = []
+    for enrollment_id, name, center, track, count, last_absence in pending:
+        permit_form = form(
+            f"/platform/learners/{enrollment_id}/permit", csrf,
+            '<label>سبب إصدار الإذن'
+            '<textarea name="reason" minlength="6" maxlength="2000" required '
+            'rows="2" placeholder="اكتب سبب السماح بالدخول"></textarea></label>',
+            "إصدار إذن بالدخول"
+        )
+        items.append([
+            f'<a href="/platform/learners/{enrollment_id}">{e(name)}</a>',
+            e(center), e(track), e(count), e(last_absence),
+            permit_form,
+        ])
+    return (
+        '<section class="pv2-neon-panel pv2-dashboard-permits">'
+        '<h2>الغائبون الذين ينتظرون إذن الدخول</h2>'
+        '<p class="pv2-neon-caption">تظهر هنا الغيابات المسجلة غير المسوّاة. '
+        'الإذن يغطي جميع الغيابات المعلقة لنفس المستفيد مع حفظ سجلها، '
+        'ولا يُصدر إلا بعد كتابة السبب.</p>'
+        + (table(["المستفيد", "المركز", "المسلك", "حصص غياب معلقة",
+                  "آخر غياب", "إذن الدخول"], items)
+           if items else
+           '<p class="pv2-neon-empty">لا يوجد مستفيدون لديهم غياب معلق حالياً.</p>')
+        + ('<p class="pv2-neon-caption">تظهر آخر 50 حالة. راجع إحصائيات الحضور '
+           'للوصول إلى باقي المستفيدين.</p>' if len(items) == 50 else '')
+        + '</section>'
+    )
+
+
 @app.get("/platform", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     """A reference-matched dark dashboard, with truthful role-scoped metrics."""
@@ -718,6 +775,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
     ).all()
     snapshot = dashboard_attendance_snapshot(db, center_ids)
     absences_section = dashboard_absence_panel(db, user, centers)
+    pending_permits_section = dashboard_pending_permits(db, user, center_ids, request.session["csrf"])
     trend_card, ring_card, attendance_rate = dashboard_neon_charts(snapshot)
     enrollment_totals = {center.id: 0 for center in centers}
     for enrollment in enrollments:
@@ -803,7 +861,7 @@ def home(request: Request, db: Session = Depends(get_db), user=Depends(actor)):
         '<div class="pv2-neon-dashboard">' + intro + todo + metrics +
         '<div class="pv2-neon-charts">' + trend_card + ring_card + '</div>' +
         '<div class="pv2-neon-bottom">' + activity + quick + '</div>' +
-        absences_section + centers_section + '</div>'
+        pending_permits_section + absences_section + centers_section + '</div>'
     )
     return page(request, user, "لوحة القيادة", content)
 
@@ -1508,7 +1566,7 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
         body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>الرمز الأصلي: {e(l.source_code) if l.source_code else "غير متوفر"} · ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
     arows=[[e(s.held_on),e(a.status),e("مغطى بإذن" if a.permit_id else "معلّق" if a.status=="absent" else "—")] for a,s in atts]
     body+=f'<section><h2>سجل الحضور والغياب</h2>{table(["التاريخ","الحالة","إذن الدخول"],arows)}</section>'
-    if user["role"]=="coordinator" and pending:
+    if user["role"] in ("admin", "coordinator") and pending:
         body+='<section><h2>إذن دخول معلل يغطي الغيابات المعلقة</h2>'+form(f"/platform/learners/{en.id}/permit",csrf,
           area("reason","التبرير الإلزامي"),"إصدار إذن الدخول")+'</section>'
     results=transcript(db,en)
