@@ -1508,7 +1508,7 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
         body+=f'<section><h2>المعلومات العائلية (مقيدة)</h2><p>الرمز الأصلي: {e(l.source_code) if l.source_code else "غير متوفر"} · ولي الأمر: {e(l.guardian_name)} · هاتف: {e(l.guardian_phone)} · الصفة: {e(l.guardian_relationship)}</p></section>'
     arows=[[e(s.held_on),e(a.status),e("مغطى بإذن" if a.permit_id else "معلّق" if a.status=="absent" else "—")] for a,s in atts]
     body+=f'<section><h2>سجل الحضور والغياب</h2>{table(["التاريخ","الحالة","إذن الدخول"],arows)}</section>'
-    if user["role"]=="coordinator" and pending:
+    if user["role"] in ("admin", "coordinator") and pending:
         body+='<section><h2>إذن دخول معلل يغطي الغيابات المعلقة</h2>'+form(f"/platform/learners/{en.id}/permit",csrf,
           area("reason","التبرير الإلزامي"),"إصدار إذن الدخول")+'</section>'
     results=transcript(db,en)
