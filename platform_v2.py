@@ -3072,6 +3072,13 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             actions = []
             if user["role"] in ("admin", "coordinator") and item.author_id == user["id"] and item.status in ("draft", "returned"):
                 actions.append(form(f"/platform/summary/{item.id}/submit", csrf, "", "إرسال للإدارة"))
+            actions.append(
+                f'<a class="button" href="/platform/summary/{item.id}/print">معاينة / طباعة</a>'
+            )
+            if item.author_id == user["id"] and item.status in ("draft", "returned"):
+                actions.append(
+                    f'<a class="button" href="/platform/summary/{item.id}/edit">تحرير التقرير</a>'
+                )
             if user["role"] == "admin" and item.status == "submitted":
                 actions.append(form(
                     f"/platform/summary/{item.id}/review", csrf,
@@ -3101,6 +3108,24 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
         )
         if user["role"] in ("admin", "coordinator"):
             years = db.scalars(select(Year)).all()
+            body += (
+                '<section class="pv2-review-create"><details open>'
+                '<summary>توليد تقرير أسبوعي أو شهري تلقائياً</summary>'
+                '<p class="subtle">اختَر المركز والسنة والفترة؛ سيجمع التطبيق '
+                'الإحصائيات ومحتويات تقارير الحصص المصادق عليها فقط، '
+                'ويفتح مسودة قابلة للتحرير قبل إرسالها للإدارة.</p>'
+                + form("/platform/summary/auto", csrf,
+                       choose("year_id", "السنة التكوينية",
+                              [(y.id, y.label) for y in years]) +
+                       choose("center_id", "المركز", center_options(db, user)) +
+                       choose("period_type", "نوع التقرير", [
+                           ("weekly", "أسبوعي"), ("monthly", "شهري"),
+                       ]) +
+                       field("anchor", "تاريخ داخل الأسبوع أو الشهر", "date",
+                             value=date.today().isoformat()),
+                       "توليد مسودة التقرير")
+                + '</details></section>'
+            )
             body += (
                 '<section class="pv2-review-create"><details>'
                 '<summary>إنشاء تقرير دوري جديد للمنسق</summary>'
