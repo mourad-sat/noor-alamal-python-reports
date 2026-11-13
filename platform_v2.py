@@ -2510,7 +2510,7 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
           f'{summary}</section>' + quick
           + '<section class="pv2-attendance-detail-section"><details class="pv2-attendance-detail-toggle">'
           '<summary>تفاصيل الحضور والتسجيل الفردي (عند الحاجة)</summary>'
-          '<p class="subtle">استعمل تسجيل الغائبين فقط للحفظ الجماعي. '
+          '<p class="subtle">التسجيل الجماعي هو المسار الأساسي قبل اعتماد التقرير. '
           'افتح هذه التفاصيل عند الحاجة لتسجيل حالة واحدة، أو طلب تصحيح حالة محفوظة.</p>'
           + table(["المستفيد","التنبيه","الحضور الحالي","الإجراء"],rows)
           + '</details></section>')
