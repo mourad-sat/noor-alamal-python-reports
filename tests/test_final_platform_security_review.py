@@ -162,3 +162,27 @@ def test_annual_report_query_volume_is_bounded_for_center_dashboard(client):
         report = client.get("/platform/annual-report?year_id=1")
     assert report.status_code == 200
     assert counter.count <= 35, counter.count
+
+
+def test_instructor_loses_attachment_access_after_assignment_revoked(client):
+    admin = seed_selected_photo(client)
+    signout(client, admin)
+    trainer = signin(client, "trainer", PASSWORD)
+    assert client.get("/platform/attachments/1/download").status_code == 200
+    assert client.get("/platform/attachments/1/view").status_code == 200
+    from app import engine
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from platform_v2_models import Assignment
+    with Session(engine) as db:
+        assignment = db.scalar(select(Assignment).where(
+            Assignment.staff_id == 3, Assignment.center_id == 1,
+            Assignment.track_id == 1,
+        ))
+        assert assignment is not None
+        db.delete(assignment)
+        db.commit()
+    assert client.get("/platform/attachments/1/download").status_code == 403
+    assert client.get("/platform/attachments/1/view").status_code == 403
+    assert client.get("/platform/reports/1/attachments").status_code == 403
+    signout(client, trainer)
