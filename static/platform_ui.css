@@ -1106,3 +1106,25 @@
  background:#fff;color:#173951;border-color:#b3ced8
 }
 @media(max-width:550px){.pv2-neon-shell .pv2-weekly-rotation{padding:12px}.pv2-neon-shell .pv2-weekly-rotation label{flex-basis:100%}}
+
+
+/* In dark mode the report editor's old light-background rule was more
+   specific than the theme rule, making white typed text invisible. */
+.pv2.pv2-neon-shell:not([data-dashboard-appearance="light"]) .pv2-session-report-form .pv2-report-field input,
+.pv2.pv2-neon-shell:not([data-dashboard-appearance="light"]) .pv2-session-report-form .pv2-report-field textarea{
+  background:#102138;
+  color:#f3f8ff;
+  -webkit-text-fill-color:#f3f8ff;
+  caret-color:#69def2;
+  border-color:#47617c;
+}
+.pv2.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-session-report-form .pv2-report-field input,
+.pv2.pv2-neon-shell[data-dashboard-appearance="light"] .pv2-session-report-form .pv2-report-field textarea{
+  background:#fff;
+  color:#183d56;
+  -webkit-text-fill-color:#183d56;
+  caret-color:#183d56;
+}
+.pv2 .pv2-attendance-detail-toggle{border:1px solid var(--pv-border);border-radius:12px;padding:14px}
+.pv2 .pv2-attendance-detail-toggle>summary{cursor:pointer;font-weight:700;padding:8px}
+.pv2 .pv2-attendance-detail-toggle[open]>summary{margin-bottom:12px}

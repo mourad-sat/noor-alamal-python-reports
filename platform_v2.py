@@ -2507,8 +2507,13 @@ def session_page(session_id:int,request:Request,db:Session=Depends(get_db),user=
     )
     body=(f'<section class="pv2-attendance-session"><h2>{e(slot.subject)} · {e(s.held_on)}</h2>'
           f'<p>الساعة {e(slot.starts_at)}–{e(slot.ends_at)} · الحالة: {e(s.status)}</p>'
-          f'{summary}</section>' + quick + '<section><h2>تفاصيل الحضور والتعديل الفردي</h2>'
-          f'{table(["المستفيد","التنبيه","الحضور الحالي","الإجراء"],rows)}</section>')
+          f'{summary}</section>' + quick
+          + '<section class="pv2-attendance-detail-section"><details class="pv2-attendance-detail-toggle">'
+          '<summary>تفاصيل الحضور والتسجيل الفردي (عند الحاجة)</summary>'
+          '<p class="subtle">التسجيل الجماعي هو المسار الأساسي قبل اعتماد التقرير. '
+          'افتح هذه التفاصيل عند الحاجة لتسجيل حالة واحدة، أو طلب تصحيح حالة محفوظة.</p>'
+          + table(["المستفيد","التنبيه","الحضور الحالي","الإجراء"],rows)
+          + '</details></section>')
     if user["id"]==slot.staff_id and (not report or report.status in ("draft","returned")):
         body += session_report_editor(s.id, request.session["csrf"], report, slot.subject)
     if report:
@@ -2757,6 +2762,13 @@ def review_reports(request: Request, db: Session = Depends(get_db), user=Depends
             continue
         visible.append(r)
         actions = []
+        if user["role"] == "admin" and r.status == "draft":
+            actions.append(
+                form(f"/platform/reports/{r.id}/review", csrf,
+                     '<input type="hidden" name="decision" value="approved">'
+                     '<p class="subtle">اعتماد مباشر لمسودة مكتملة من طرف إدارة الجمعية.</p>',
+                     "اعتماد المسودة مباشرة")
+            )
         if user["role"] in ("admin", "coordinator") and r.status == "submitted":
             actions.append(
                 form(f"/platform/reports/{r.id}/review", csrf,
@@ -2885,8 +2897,15 @@ def review_report(report_id:int,request:Request,token:str=Form(alias="_csrf"),de
     if not r:raise HTTPException(404)
     slot=db.get(Slot,db.get(SessionDay,r.session_id).slot_id)
     coordinator(user,slot.center_id)
-    if r.status!="submitted" or decision not in ("approved","returned"):
-        raise HTTPException(409,"حالة المراجعة غير صحيحة")
+    can_approve_draft = user["role"] == "admin" and r.status == "draft" and decision == "approved"
+    if not can_approve_draft and (
+        r.status != "submitted" or decision not in ("approved", "returned")
+    ):
+        raise HTTPException(409, "حالة المراجعة غير صحيحة")
+    if can_approve_draft and not (
+        r.subject.strip() and r.objectives.strip() and r.activities.strip()
+    ):
+        raise HTTPException(422, "يجب استكمال عنوان التقرير والأهداف والأنشطة قبل اعتماد المسودة")
     if decision=="returned" and len(comment.strip())<5:raise HTTPException(422,"سبب الإرجاع إلزامي")
     r.status=decision;r.review_comment=comment.strip()[:1500];r.reviewed_by=user["name"];r.reviewed_at=now()
     db.add(Notification(staff_id=r.author_id,message=f"تحديث تقرير الحصة: {STATUS_LABELS[decision]}",target=f"/platform/sessions/{r.session_id}"))
