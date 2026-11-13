@@ -3067,10 +3067,54 @@ def grades_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
           choose("track_id","المسلك",allowed)+choose("subject","المادة",[("مهني","التكوين المهني")]+[(s,s) for s in SUBJECTS])+
           field("title","عنوان الاختبار")+field("held_on","تاريخ الاختبار","date")+
           field("coefficient","المعامل","number",extra='step="0.01" min="0.01"'),"إنشاء الاختبار")+'</section>'+body
-        body+='<section><h2>إدخال نقطة</h2>'+form("/platform/grades",csrf,
-           choose("assessment_id","الاختبار",[(a.id,f"{a.title} · {a.subject}") for a in assessments if a.staff_id==user["id"]])+
-           field("enrollment_id","رقم تسجيل المستفيد","number",extra='min="1"')+
-           field("score","النقطة من 20","number",extra='min="0" max="20" step="0.01"'),"حفظ نقطة للمراجعة")+'</section>'
+        # Populate the learner picker only from active enrollments in the
+        # instructor's own assessment tracks; names are display-only and the
+        # secured grade POST still verifies the enrollment and assessment.
+        my_assessments = [a for a in assessments if a.staff_id == user["id"]]
+        assessed_track_ids = {a.track_id for a in my_assessments}
+        eligible_enrollments = db.scalars(
+            select(Enrollment).where(
+                Enrollment.track_id.in_(assessed_track_ids),
+                Enrollment.status == "active",
+            ).order_by(Enrollment.id)
+        ).all() if assessed_track_ids else []
+        eligible_enrollments = [
+            en for en in eligible_enrollments
+            if (track := db.get(Track, en.track_id)) is not None
+            and en.center_id == track.center_id and en.year_id == track.year_id
+        ]
+        eligible_learners = by_id(db, Learner, (en.learner_id for en in eligible_enrollments))
+        eligible_tracks = by_id(db, Track, assessed_track_ids)
+        exam_options = "".join(
+            f'<option value="{a.id}" data-track-id="{a.track_id}">'
+            f'{e(a.title)} · {e(a.subject)} · {e(eligible_tracks[a.track_id].name)}</option>'
+            for a in my_assessments
+        )
+        learner_options = '<option value="">اختر اسم المستفيد</option>' + "".join(
+            f'<option value="{en.id}" data-track-id="{en.track_id}">'
+            f'{e(eligible_learners[en.learner_id].full_name)} · '
+            f'{e(eligible_tracks[en.track_id].name)}</option>'
+            for en in eligible_enrollments
+        )
+        picker = (
+            '<div data-grade-learner-picker>'
+            '<label>الاختبار<select name="assessment_id" data-grade-assessment required>'
+            + exam_options + '</select></label>'
+            '<label>اسم المستفيد<select name="enrollment_id" data-grade-learner required>'
+            + learner_options + '</select></label>'
+            '<p class="subtle" data-grade-learner-hint role="status">'
+            'اختر الاختبار ثم المستفيد من المسلك نفسه.</p></div>'
+        )
+        if my_assessments:
+            body += '<section><h2>إدخال نقطة</h2>' + form(
+                "/platform/grades", csrf,
+                picker + field("score", "النقطة من 20", "number",
+                               extra='min="0" max="20" step="0.01"'),
+                "حفظ نقطة للمراجعة"
+            ) + '</section>'
+        else:
+            body += ('<section><h2>إدخال نقطة</h2><p class="subtle">'
+                     'أنشئ اختباراً أولاً حتى تظهر لائحة أسماء المستفيدين.</p></section>')
     if user["role"] in ("admin", "coordinator"):
         pending=db.scalars(select(GradeCorrection).where(GradeCorrection.status=="pending")).all()
         cr=[]
