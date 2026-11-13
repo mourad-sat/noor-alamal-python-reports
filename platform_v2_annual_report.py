@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app import app, get_db
 from platform_v2 import actor, center_allowed, e, page, require_role
-from platform_v2_aggregates import approved_stats
 from platform_v2_integration import OUTCOMES, POSITIVE
 from platform_v2_models import (
     Assessment, Attachment, Attendance, Center, Enrollment, Grade,
@@ -131,30 +130,29 @@ def annual_data(db: Session, year, centers, tracks):
         .order_by(SessionDay.held_on, SessionDay.id)
     ).all() if track_ids else []
     evidence_ids = [session.id for session, _, _, _ in evidence]
-    # Reuse the same approved-only semantics as periodic reporting.
-    slots = db.scalars(select(Slot).where(
-        Slot.year_id == year.id,
-        Slot.center_id.in_(center_ids),
-        Slot.track_id.in_(track_ids),
-        Slot.canceled.is_(False),
-    )).all() if track_ids else []
-    stats = approved_stats(db, slots, year.starts_on, year.ends_on) if slots else {
-        "sessions": 0, "recorded": 0, "present": 0, "absent": 0,
-        "absent_days": 0, "missing": 0,
-    }
+    # Only sessions tied to the selected center/year/approved report are
+    # eligible. Count attendance for enrollments in that center/year, without
+    # scanning every approved report in the whole system.
     # All records are restricted to the selected enrollment and approved sessions.
     attendance = db.scalars(select(Attendance).where(
         Attendance.session_id.in_(evidence_ids),
         Attendance.enrollment_id.in_(enrollment_ids),
     )).all() if evidence_ids and enrollment_ids else []
+    sessions_by_id = {s.id: s for s, _, _, _ in evidence}
+    recorded_ids = {a.session_id for a in attendance}
     present = sum(a.status in ("present", "late") for a in attendance)
     absent = sum(a.status == "absent" for a in attendance)
-    stats["present"] = present
-    stats["absent"] = absent
-    stats["absent_days"] = len({
-        (a.enrollment_id, next(s.held_on for s, _, _, _ in evidence if s.id == a.session_id))
-        for a in attendance if a.status == "absent"
-    })
+    stats = {
+        "sessions": len(evidence),
+        "recorded": len(recorded_ids),
+        "present": present,
+        "absent": absent,
+        "absent_days": len({
+            (a.enrollment_id, sessions_by_id[a.session_id].held_on)
+            for a in attendance if a.status == "absent"
+        }),
+        "missing": len(evidence) - len(recorded_ids),
+    }
     assessments = {
         a.id: a for a in db.scalars(select(Assessment).where(
             Assessment.track_id.in_(track_ids),
