@@ -465,6 +465,7 @@ import platform_v2_attendance_corrections  # noqa: E402,F401
 import platform_v2_staff_profiles  # noqa: E402,F401
 import platform_v2_learner_cards  # noqa: E402,F401
 import platform_v2_learner_progress  # noqa: E402,F401
+import platform_v2_skills  # noqa: E402,F401
 import platform_v2_learner_completeness  # noqa: E402,F401
 import platform_v2_privacy  # noqa: E402,F401
 import platform_v2_schedule_exceptions  # noqa: E402,F401
