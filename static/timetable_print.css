@@ -1,65 +1,84 @@
-/* Timetable model supplied by the association: A4 portrait, framed RTL sheet,
-   identity table, weekday columns and two teaching periods. */
-:root{font-family:"Tajawal","Cairo","Noto Naskh Arabic",Tahoma,Arial,sans-serif;color:#111;background:#e9edf2}
+/* Noor Al Amal — polished printable weekly timetable; A4 portrait / RTL. */
+:root{font-family:"Tajawal","Cairo",Tahoma,Arial,sans-serif;color:#183449;background:#edf3f6}
 *{box-sizing:border-box}
 body{margin:0;direction:rtl}
-.print-controls{width:min(1100px,calc(100% - 28px));margin:18px auto 12px;background:#12243b;border:1px solid #2b4b66;border-radius:15px;color:#e9f6ff;padding:18px}
-.print-control-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.print-controls{width:min(1120px,calc(100% - 28px));margin:20px auto 12px;background:#132c43;border:1px solid #284c65;border-radius:16px;color:#ecf8ff;padding:20px;box-shadow:0 8px 22px #12263821}
+.print-control-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
 .print-control-heading strong{font-size:20px}
-.print-controls a{color:#86edff}
+.print-controls a{color:#90f2e8}
 .print-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:13px;align-items:end}
 .print-picker label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}
 .print-picker [hidden]{display:none!important}
-.print-picker select{width:100%;min-width:0;min-height:45px;background:#1b354f;border:1px solid #56718a;border-radius:9px;color:#fff;padding:8px;font-size:14px}
-.print-controls button{min-height:44px;padding:9px 20px;border:1px solid #3fbdbb;border-radius:9px;background:#167c78;color:#fff;cursor:pointer;font-size:14px;font-weight:800}
-.print-picker button{background:#51338d;border-color:#8258bc}
+.print-picker select,.print-picker input{width:100%;min-width:0;min-height:45px;background:#1b3951;border:1px solid #567589;border-radius:9px;color:#fff;padding:8px;font-size:14px}
+.print-controls button{min-height:44px;padding:9px 20px;border:1px solid #41bdad;border-radius:9px;background:#117e76;color:#fff;cursor:pointer;font-size:14px;font-weight:800}
+.print-picker button{background:#4f438c;border-color:#8274ba}
 .print-controls>button{margin-top:14px}
-.print-controls p{font-size:12px;color:#b1cfe4;line-height:1.7}
-.print-paper{width:210mm;max-width:calc(100% - 20px);min-height:297mm;margin:20px auto 35px;padding:8mm;background:#fff;box-shadow:0 12px 42px #08131f3a;direction:rtl}
-.print-frame{min-height:277mm;border:6px double #111;padding:10mm 7mm 9mm}
-.print-identity{width:100%;border-collapse:collapse;table-layout:fixed;font-weight:700;font-size:12px}
-.print-identity th,.print-identity td{border:1px solid #111;padding:6px 7px;vertical-align:middle;overflow-wrap:anywhere}
-.print-identity th{width:22%;background:#d6d6d6;text-align:right;font-size:13px}
-.print-identity td{width:28%;background:#fff;font-weight:500}
-.print-frame h1{text-align:center;font-weight:900;text-decoration:underline;font-size:29px;margin:26px 0 0;line-height:1.4}
-.print-frame h2{text-align:center;font-style:italic;text-decoration:underline;font-size:18px;margin:0 0 2px;font-weight:700}
-.print-subtitle{margin:0 0 17px;text-align:center;font-size:13px;font-weight:700}
-.print-week{border-collapse:collapse;table-layout:fixed;width:100%;direction:rtl;border:2px solid #111}
-.print-week th,.print-week td{border:1px solid #111;padding:5px 3px;vertical-align:top;overflow-wrap:anywhere}
-.print-week thead th{background:#d6d6d6;text-align:center;font-weight:800;font-size:12px;min-height:54px}
-.print-week thead th:first-child{width:13%;font-size:11px}
-.print-week thead sup{display:block;line-height:1.15;font-size:10px;text-decoration:underline}
-.print-week thead small{display:block;font-size:10px;line-height:1.45;font-weight:700;margin-top:3px;direction:rtl}
-.print-week tbody th{background:#d6d6d6;font-size:13px;font-weight:900;text-align:center;vertical-align:middle;width:13%;writing-mode:vertical-rl;transform:none;padding:15px 8px}
-.print-week tbody td{height:100mm;padding:4px;vertical-align:top}
-.print-week tbody tr.print-period-1 td:nth-of-type(odd),.print-week tbody tr.print-period-2 td:nth-of-type(even){background:#e2efd9}
-.print-week tbody tr.print-period-2 td{height:85mm}
-.print-lesson{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;padding:5px 3px;background:#ffffffd9;border:1px solid #a3b0a1;break-inside:avoid;line-height:1.32}
-.print-lesson .print-class{font-size:11px;font-weight:900}
-.print-lesson .print-time{font-size:10px;font-weight:800;white-space:nowrap;align-self:flex-start;unicode-bidi:isolate}
-.print-lesson span:not(.print-class):not(.print-time){font-size:9px;font-weight:600}
-.print-blank{display:block;min-height:18px;text-align:center;font-size:14px;color:#888}
-.print-footer{margin:15px 0 0;text-align:center;font-size:10px;color:#4d4d4d}
+.print-controls p{font-size:12px;color:#bbd1e0;line-height:1.7}
+.print-paper{width:210mm;max-width:calc(100% - 20px);min-height:297mm;margin:20px auto 35px;padding:8mm;background:#fff;box-shadow:0 12px 42px #08131f29;direction:rtl}
+.print-frame{min-height:277mm;border:6px double #111;border-color:#426f7b;padding:7mm 6mm 8mm}
+.print-brand{display:flex;align-items:center;gap:12px;padding:0 0 13px;border-bottom:2px solid #2a8b82;margin-bottom:14px}
+.print-brand img{width:64px;height:64px;object-fit:contain;flex-shrink:0}
+.print-brand-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.print-brand-text strong{font-size:19px;color:#144f60;line-height:1.4}
+.print-brand-text span{font-size:11px;font-weight:700;color:#426479}
+.print-brand-text small{font-size:10px;color:#607987}
+.print-brand-mark{font-weight:800;color:#235d68;border:1px solid #bed5d9;background:#eaf5f4;border-radius:7px;padding:5px 8px;font-size:11px;white-space:nowrap}
+.print-identity{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px}
+.print-identity th,.print-identity td{border:1px solid #c0d0d8;padding:7px 8px;vertical-align:middle;overflow-wrap:anywhere}
+.print-identity th{width:20%;background:#e9f1f4;color:#244f62;text-align:right;font-size:11px;font-weight:800}
+.print-identity td{width:30%;background:#fff;font-weight:600;line-height:1.5}
+.print-heading{text-align:center;margin:16px 0 14px}
+.print-eyebrow{color:#118477;font-weight:900;font-size:10px;margin:0 0 2px;letter-spacing:.2px}
+.print-frame h1{text-align:center;font-weight:900;font-size:26px;margin:0;line-height:1.4;color:#164d60}
+.print-frame h2{text-align:center;font-style:normal;font-size:13px;margin:2px 0 6px;color:#537184;font-weight:700}
+.print-subtitle{margin:0 auto;max-width:98%;text-align:center;font-size:11px;font-weight:700;line-height:1.75;overflow-wrap:anywhere}
+.print-timetable-wrap{width:100%;overflow:visible}
+.print-week{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;direction:rtl;border:1.5px solid #729aa8;border-radius:8px;overflow:hidden}
+.print-week th,.print-week td{border:0;border-bottom:1px solid #cedde3;border-left:1px solid #cedde3;padding:7px 4px;vertical-align:top;overflow-wrap:anywhere}
+.print-week th:last-child,.print-week td:last-child{border-left:none}
+.print-week thead{display:table-header-group}
+.print-week thead th{background:#205d70;color:#fff;text-align:center;font-weight:800;font-size:11px;line-height:1.4}
+.print-week thead th:first-child{width:14%;font-size:10px}
+.print-week thead sup{display:inline-block;vertical-align:middle;line-height:1.15;font-size:9px;margin-right:3px;opacity:.84}
+.print-week thead small{display:block;font-size:9px;line-height:1.45;font-weight:600;margin-top:5px;direction:rtl;color:#d6eeef}
+.print-week tbody th{background:#e6f0f3;font-size:11px;font-weight:900;text-align:center;vertical-align:middle;width:14%;writing-mode:horizontal-tb;padding:10px 3px;color:#205467}
+.print-week tbody td{height:auto;min-height:42mm;vertical-align:top;background:#fff}
+.print-week tbody tr.print-period-1 td:nth-of-type(odd),.print-week tbody tr.print-period-2 td:nth-of-type(even){background:#f3f8f7}
+.print-week tbody tr.print-period-2 td{height:auto;min-height:42mm}
+.print-lesson{display:flex;flex-direction:column;gap:3px;margin-bottom:7px;padding:7px 5px;background:#fdfefe;border:1px solid #bed5dc;border-right:3px solid #169a87;border-radius:6px;break-inside:avoid;page-break-inside:avoid;line-height:1.35;box-shadow:0 1px 2px #143c5010}
+.print-period-2 .print-lesson{border-right-color:#5478ad}
+.print-lesson .print-class{font-size:10px;font-weight:900;color:#174a5c}
+.print-lesson .print-time{font-size:10px;font-weight:900;white-space:normal;align-self:flex-start;unicode-bidi:isolate;color:#157a70}
+.print-lesson span:not(.print-class):not(.print-time){font-size:9px;font-weight:600;color:#536b7a}
+.print-blank{display:block;text-align:center;font-size:13px;color:#a4b8c0;padding:10px 0}
+.print-legend{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 12px;margin-top:14px;font-size:10px;color:#496b7b}
+.print-legend span{display:inline-flex;align-items:center;gap:5px}
+.print-legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#159b89}
+.print-footer{margin:11px 0 0;text-align:center;font-size:9px;line-height:1.55;color:#617b89}
 @media(max-width:800px){
-  .print-paper{width:100%;padding:10px;min-height:auto}
-  .print-frame{min-height:0;padding:16px 10px}
-  .print-week tbody td{height:170px}
-  .print-week tbody tr.print-period-2 td{height:140px}
-  .print-week th,.print-week td{font-size:9px}
-  .print-identity{font-size:10px}
+ .print-paper{width:100%;padding:10px;min-height:auto}
+ .print-frame{min-height:0;padding:14px 9px}
+ .print-brand-mark{display:none}
+ .print-week th,.print-week td{font-size:9px;padding:5px 2px}
+ .print-week tbody td{min-height:0}
+ .print-identity{font-size:10px}
+ .print-lesson{padding:5px 3px}
 }
 @page{size:A4 portrait;margin:0}
 @media print{
-  :root,body{background:#fff!important}
-  .no-print{display:none!important}
-  .print-paper{width:210mm!important;max-width:none;min-height:297mm;margin:0;padding:8mm;box-shadow:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-  .print-frame{min-height:277mm;padding:10mm 7mm 9mm}
-  .print-week tbody td{height:auto;min-height:70mm}
-  .print-week tbody tr.print-period-2 td{height:auto;min-height:65mm}
-  .print-week tbody tr{break-inside:avoid;page-break-inside:avoid}
-  .print-lesson{break-inside:avoid;page-break-inside:avoid}
-  .print-identity th,.print-week thead th,.print-week tbody th{background:#d6d6d6!important}
-  .print-week tbody tr.print-period-1 td:nth-of-type(odd),
-  .print-week tbody tr.print-period-2 td:nth-of-type(even){background:#e2efd9!important}
-  .print-lesson{background:#ffffffdf!important}
+ :root,body{background:#fff!important}
+ .no-print{display:none!important}
+ .print-paper{width:210mm!important;max-width:none;min-height:297mm;margin:0;padding:8mm;box-shadow:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .print-frame{min-height:277mm;padding:7mm 6mm 8mm}
+ .print-week{overflow:visible}
+ .print-week thead{display:table-header-group}
+ .print-week tbody tr{break-inside:auto;page-break-inside:auto}
+ .print-week tbody td{height:auto;min-height:0}
+ .print-week tbody tr.print-period-2 td{height:auto;min-height:0}
+ .print-lesson{break-inside:avoid;page-break-inside:avoid;box-shadow:none}
+ .print-brand{break-inside:avoid}
+ .print-week thead th{background:#205d70!important;color:#fff!important}
+ .print-identity th,.print-week tbody th{background:#e9f1f4!important}
+ .print-week tbody tr.print-period-1 td:nth-of-type(odd),.print-week tbody tr.print-period-2 td:nth-of-type(even){background:#f3f8f7!important}
+ .print-lesson{background:#fff!important}
 }
