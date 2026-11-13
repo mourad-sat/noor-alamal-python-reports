@@ -111,6 +111,34 @@ class Enrollment(Base):
     status: Mapped[str] = mapped_column(String(24), default="active")
     __table_args__ = (UniqueConstraint("learner_id", "year_id", name="uq_v2_enrollment_year"),)
 
+class SkillEvaluation(Base):
+    """Structured, private competency rubric for one enrollment and training stage.
+
+    Separate from grade approvals. A single score per competency/stage allows
+    comparisons without overwriting official academic grades.
+    """
+    __tablename__ = "v2_skill_evaluations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrollment_id: Mapped[int] = mapped_column(
+        ForeignKey(fk("v2_enrollments")), index=True
+    )
+    skill_key: Mapped[str] = mapped_column(String(45))
+    stage: Mapped[str] = mapped_column(String(24))
+    level: Mapped[int] = mapped_column(Integer)
+    evaluated_on: Mapped[date] = mapped_column(Date)
+    comment: Mapped[str] = mapped_column(String(600), default="")
+    author_id: Mapped[int | None] = mapped_column(
+        ForeignKey(fk("v2_staff")), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (
+        UniqueConstraint(
+            "enrollment_id", "skill_key", "stage",
+            name="uq_v2_skill_enrollment_key_stage",
+        ),
+    )
+
+
 class Slot(Base):
     __tablename__ = "v2_slots"
     id: Mapped[int] = mapped_column(primary_key=True)
