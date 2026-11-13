@@ -176,6 +176,7 @@ def page(request, user, title, body):
         ("طلبات استعمال الزمن", "/platform/schedule/proposals"),
         ("طباعة استعمال الزمن", "/platform/schedule/print"),
         ("تقارير الحصص", "/platform/reports"), ("تقارير أسبوعية وشهرية", "/platform/aggregates"),
+        ("تتبع الإدماج", "/platform/integration"),
         ("إحصائيات الحضور", "/platform/attendance/stats"), ("النقط", "/platform/grades"),
         ("السلوك والانضباط", "/platform/discipline"), ("الإشعارات الورقية", "/platform/notices"),
         ("التنبيهات", "/platform/notifications"),
@@ -201,7 +202,7 @@ def page(request, user, title, body):
         "/platform/schedule": "calendar", "/platform/schedule/print": "calendar",
         "/platform/schedule/proposals": "calendar", "/platform/reports": "document",
         "/platform/aggregates": "chart", "/platform/attendance/stats": "activity",
-        "/platform/grades": "star", "/platform/staff": "users",
+        "/platform/integration": "chart", "/platform/grades": "star", "/platform/staff": "users",
         "/platform/notifications": "bell", "/platform/notices": "documents",
         "/platform/discipline": "shield", "/platform/settings": "settings",
         "/platform/years": "documents", "/platform/profile": "users",
@@ -1700,6 +1701,10 @@ def learner_detail(enrollment_id:int,request:Request,db:Session=Depends(get_db),
     state='<span class="danger">أحمر: غياب معلق</span>' if pending else '<span class="good">أخضر: الغياب مسوى</span>'
     if disciplinary_status(db,en):state+=' <span class="danger">· إقصاء تأديبي مستقل</span>'
     body=f'<section><h2>{e(l.full_name)}</h2><p>{e(db.get(Center,en.center_id).name)} · {e(db.get(Track,en.track_id).name)}</p><p>{state}</p><p>حصص الغياب: {historic} · أيام الغياب: {days} · غياب لم يشمله إذن دخول: {pending}</p></section>'
+    body += (f'<section><h2>الإدماج بعد التكوين</h2>'
+             '<p>تتبع مواصلة الدراسة والتكوين المهني والشغل، مع سجل المواكبة والطباعة.</p>'
+             f'<a class="button" href="/platform/learners/{en.id}/integration">'
+             'فتح بطاقة تتبع الإدماج</a></section>')
     body += (f'<section><h2>تقييم المهارات والكفايات</h2>'
              '<p>تقييم أولي ومرحلي ونهائي للمهارات الأساسية مع مبيان مقارنة وطباعة.</p>'
              f'<a class="button" href="/platform/learners/{en.id}/skills">'
