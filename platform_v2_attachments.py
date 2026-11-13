@@ -35,7 +35,10 @@ def report_access(db:Session,user,report_id:int):
     slot=db.get(Slot,session.slot_id)
     if user["role"]=="admin" or (user["role"]=="coordinator" and center_allowed(user,slot.center_id)):
         return report,slot
-    if user["id"]==report.author_id and user["id"]==slot.staff_id:
+    if (user["role"] in ("instructor", "educator")
+            and user["id"]==report.author_id and user["id"]==slot.staff_id
+            and any(a.center_id==slot.center_id and a.track_id==slot.track_id
+                    for a in user["assignments"])):
         return report,slot
     raise HTTPException(403,"مرفقات التقرير خارج نطاق صلاحياتك")
 
