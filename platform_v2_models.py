@@ -111,6 +111,26 @@ class Enrollment(Base):
     status: Mapped[str] = mapped_column(String(24), default="active")
     __table_args__ = (UniqueConstraint("learner_id", "year_id", name="uq_v2_enrollment_year"),)
 
+class IntegrationFollowup(Base):
+    """Append-only post-training outcome/contact history per enrollment."""
+    __tablename__ = "v2_integration_followups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrollment_id: Mapped[int] = mapped_column(
+        ForeignKey(fk("v2_enrollments")), index=True
+    )
+    outcome: Mapped[str] = mapped_column(String(30))
+    observed_on: Mapped[date] = mapped_column(Date)
+    organization: Mapped[str] = mapped_column(String(180), default="")
+    pathway_details: Mapped[str] = mapped_column(String(300), default="")
+    intervention: Mapped[str] = mapped_column(String(500), default="")
+    next_followup_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    author_id: Mapped[int | None] = mapped_column(
+        ForeignKey(fk("v2_staff")), nullable=True
+    )
+    recorded_by: Mapped[str] = mapped_column(String(140))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class SkillEvaluation(Base):
     """Structured, private competency rubric for one enrollment and training stage.
 
