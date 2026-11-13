@@ -34,8 +34,8 @@ def test_grade_form_uses_named_active_learners_instead_of_manual_id(client):
 
 
 def test_grade_form_without_assessments_prompts_creation(client):
-    setup_org(client)
-    signout(client, client.cookies.get("csrf", "unused"))
+    admin = setup_org(client)
+    signout(client, admin)
     teacher = signin(client, "trainer", PASSWORD)
     html = client.get("/platform/grades").text
     assert "أنشئ اختباراً أولاً" in html
