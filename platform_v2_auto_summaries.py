@@ -236,6 +236,6 @@ def print_generated_summary(report_id: int, db: Session = Depends(get_db),
     من: {e(report.period_start)} إلى: {e(report.period_end)} · رقم التقرير: {report.id}</div>
     <div class="content">{paragraphs}</div>{stamp}
     {('<div class="signatures"><span>توقيع منسق المركز: ................</span>'
-      '<span>ختم ومصادقة الجمعية: ................</span></div>' if is_approved else '')}
+      '<span>ختم ومصادقة الجمعية: ................</span></div>' if is_approved and report.period_type == "monthly" else '')}
     </main></body></html>"""
     return HTMLResponse(html, headers={"Cache-Control": "private, no-store"})
