@@ -60,7 +60,7 @@ def test_selected_album_scoped_filters_print_and_legacy_records_unchanged(client
     landing = client.get("/platform/activity-album")
     assert landing.status_code == 200
     assert "ألبوم الأنشطة التوثيقية" in landing.text
-    assert "4" not in landing.text.split("صورة في هذا العرض")[0][-5:] or True
+    assert "2 صورة في هذا العرض" in landing.text
     assert "صورة-مركز-1-0.png" in landing.text
     assert "صورة-مركز-2-0.png" in landing.text
     assert "صورة-مركز-1-1.png" not in landing.text
