@@ -112,3 +112,68 @@ def test_invalid_period_or_outside_year_rejected(client):
                         year_id=1, center_id=1, period_type=period,
                         anchor=anchor)
         assert response.status_code == 422
+
+
+def test_print_has_indicator_graph_and_activity_table_from_approved_reports(client):
+    coord = setup_approved_session(client)
+    assert post(client, "/platform/reports/1/review", coord,
+                decision="approved").status_code == 303
+    response = post(client, "/platform/summary/auto", coord,
+                    year_id=1, center_id=1, period_type="weekly",
+                    anchor="2026-11-06")
+    assert response.status_code == 303
+    printed = client.get("/platform/summary/1/print")
+    assert printed.status_code == 200
+    for field in ("مؤشرات الفترة", "الحصص المعتمدة",
+                  "مبيان توزيع سجلات الحضور والغياب",
+                  "عدد الحصص المعتمدة حسب المسلك",
+                  "جدول الأنشطة المنجزة والمصادق عليها",
+                  "2026-11-06", "تمارين جماعية في التواصل",
+                  "الصور التوثيقية المختارة"):
+        assert field in printed.text, field
+    assert "لا يمكن حساب نسبة الحضور" in printed.text
+    assert '<div class="gallery">' in printed.text
+    assert "لا توجد صور مختارة للإدراج" in printed.text
+
+
+def test_only_selected_approved_image_is_embedded_in_report(client):
+    from app import engine
+    from sqlalchemy.orm import Session
+    from platform_v2_models import Attachment, AttachmentBlob
+
+    coord = setup_approved_session(client)
+    assert post(client, "/platform/reports/1/review", coord,
+                decision="approved").status_code == 303
+    with Session(engine) as db:
+        chosen = Attachment(
+            report_id=1, original_name="نشاط داخل المركز.png",
+            content_type="image/png", byte_size=8,
+            storage_key="selected-demo", select_for_summary=True,
+        )
+        ignored = Attachment(
+            report_id=1, original_name="صورة غير مختارة.png",
+            content_type="image/png", byte_size=8,
+            storage_key="unselected-demo", select_for_summary=False,
+        )
+        db.add_all([chosen, ignored])
+        db.flush()
+        db.add_all([
+            AttachmentBlob(attachment_id=chosen.id, content=b"\\x89PNG\\r\\n\\x1a\\n"),
+            AttachmentBlob(attachment_id=ignored.id, content=b"\\x89PNG\\r\\n\\x1a\\n"),
+        ])
+        db.commit()
+    response = post(client, "/platform/summary/auto", coord,
+                    year_id=1, center_id=1, period_type="monthly",
+                    anchor="2026-11-06")
+    assert response.status_code == 303
+    html = client.get("/platform/summary/1/print").text
+    assert "نشاط داخل المركز.png" in html
+    assert 'src="/platform/attachments/1/view"' in html
+    assert "صورة غير مختارة.png" not in html
+    assert 'src="/platform/attachments/2/view"' not in html
+    assert client.get("/platform/attachments/1/view").status_code == 200
+    assert client.get("/platform/attachments/2/view").status_code == 403
+    signout(client, coord)
+    coord2 = signin(client, "coord2", PASSWORD)
+    assert client.get("/platform/summary/1/print").status_code == 403
+    assert client.get("/platform/attachments/1/view").status_code == 403
