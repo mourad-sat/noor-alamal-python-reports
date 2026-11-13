@@ -12,6 +12,9 @@ def seed_report(client, *, complete=True):
                 track_id=1, staff_id=3, subject="مهني", weekday=4,
                 starts_at="08:00", ends_at="10:00",
                 reason="حصة تعليمية معتمدة").status_code == 303
+    assert post(client, "/platform/learners", admin,
+                full_name="مستفيد افتراضي للحضور", year_id=1,
+                track_id=1).status_code == 303
     signout(client, admin)
     teacher = signin(client, "trainer", PASSWORD)
     assert post(client, "/platform/sessions", teacher,
