@@ -25,7 +25,7 @@ def report_metadata_table(year, track, slot, session, instructor, present: int, 
         ("السنة التكوينية", year.label, "المركز / المسلك", track.name),
         ("المادة", slot.subject, "تاريخ الحصة", session.held_on),
         ("المؤطر(ة)", instructor.full_name, "التوقيت", f"{slot.starts_at}–{slot.ends_at}"),
-        ("الحاضرون", present, "الغائبون", absent),
+        ("عدد الحاضرين", present, "عدد الغائبين", absent),
     )
     rows = "".join(
         f'<tr><th scope="row">{e(a)}</th><td>{e(b)}</td>'
