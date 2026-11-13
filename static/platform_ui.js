@@ -108,8 +108,37 @@
       update();
     });
   }
+  function initializeGradeLearnerPicker() {
+    document.querySelectorAll("[data-grade-learner-picker]").forEach(function (picker) {
+      var assessment = picker.querySelector("[data-grade-assessment]");
+      var learner = picker.querySelector("[data-grade-learner]");
+      var hint = picker.querySelector("[data-grade-learner-hint]");
+      if (!assessment || !learner) return;
+      function update() {
+        var selected = assessment.options[assessment.selectedIndex];
+        var track = selected ? selected.getAttribute("data-track-id") : "";
+        var matches = 0;
+        Array.prototype.forEach.call(learner.options, function (option) {
+          if (!option.value) return;
+          var eligible = !!track && option.getAttribute("data-track-id") === track;
+          option.disabled = !eligible;
+          option.hidden = !eligible;
+          if (eligible) matches++;
+        });
+        // Never retain a learner from a different assessment's track.
+        learner.value = "";
+        learner.disabled = !matches;
+        if (hint) hint.textContent = matches ?
+          "المستفيدون المتاحون لهذا الاختبار: " + matches :
+          "لا يوجد مستفيدون نشطون في مسلك هذا الاختبار.";
+      }
+      assessment.addEventListener("change", update);
+      update();
+    });
+  }
   function onReady() {
     initializeQuickAttendance();
+    initializeGradeLearnerPicker();
     initializeTimetablePrinting();
     initializeQuickSearchShortcut();
     document.querySelectorAll("[data-nav-filter]").forEach(initialize);
