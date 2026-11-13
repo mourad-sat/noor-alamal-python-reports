@@ -22,7 +22,7 @@ from platform_v2 import actor, assert_csrf, e, form, field, choose, area, page, 
 from platform_v2_models import (
     Assessment, Attachment, AttachmentBlob, Attendance, AttendanceCorrection, Audit, CenterReport,
     Discipline, DocumentProof, Enrollment, ErasureAggregate, Grade,
-    GradeCorrection, Incident, Learner, LearnerPhoto, Notice, Notification, Permit,
+    GradeCorrection, Incident, IntegrationFollowup, Learner, LearnerPhoto, Notice, Notification, Permit,
     SessionDay, SessionReport, SessionReportProof, Slot, SkillEvaluation,
 )
 
@@ -109,6 +109,7 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
     changes=db.scalars(select(GradeCorrection).where(GradeCorrection.grade_id.in_(grade_ids))).all() if grade_ids else []
     corrections=db.scalars(select(AttendanceCorrection).where(AttendanceCorrection.attendance_id.in_(attendance_ids))).all() if attendance_ids else []
     skill_evaluations=db.scalars(select(SkillEvaluation).where(SkillEvaluation.enrollment_id.in_(en_ids))).all() if en_ids else []
+    followups=db.scalars(select(IntegrationFollowup).where(IntegrationFollowup.enrollment_id.in_(en_ids))).all() if en_ids else []
 
     sessions={s.id:s.held_on for s in db.scalars(select(SessionDay)).all()}
     missed=[a for a in attendance if a.status=="absent"]
@@ -131,6 +132,7 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
         "discipline":[x.id for x in discipline],"permit":[x.id for x in permits],
         "learner":[learner.id],"learner_photo":[learner.id],
         "skill_evaluation":[x.id for x in skill_evaluations],
+        "integration_followup":[x.id for x in followups],
     }
     for resource,ids in id_references.items():
         if ids:
@@ -156,6 +158,7 @@ def erase_learner(db:Session,user,learner_id:int,reason:str,category:str):
         (AttendanceCorrection,[x.id for x in corrections]),
         (DocumentProof,[x.id for x in proofs]),
         (SkillEvaluation,[x.id for x in skill_evaluations]),
+        (IntegrationFollowup,[x.id for x in followups]),
         (Grade,grade_ids),
         (Attendance,attendance_ids),
         (Incident,[x.id for x in incidents]),
