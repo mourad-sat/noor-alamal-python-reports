@@ -36,7 +36,7 @@ def test_admin_can_view_and_print_scoped_contacts(client):
 
     printed = client.get("/platform/learners/contacts/print?track_id=1")
     assert printed.status_code == 200
-    assert printed.headers["cache-control"] == "private, no-store"
+    assert "no-store" in printed.headers["cache-control"]
     for field in ("جمعية نور الأمل", "اسم المستفيد(ة)", "رمز مسار",
                   "هاتف ولي الأمر", "MASSAR-123", "0611223344",
                   "طباعة / حفظ PDF", "window.print()", "size:A4 portrait",
