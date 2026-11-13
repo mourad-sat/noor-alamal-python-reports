@@ -1433,6 +1433,96 @@ def assign_staff(request:Request,token:str=Form(alias="_csrf"),staff_id:int=Form
     return redirect("/platform/staff")
 
 
+
+@app.get("/platform/learners/contacts/print", response_class=HTMLResponse)
+def learner_contacts_print(track_id: int, db: Session = Depends(get_db),
+                           user=Depends(actor)):
+    """Private printable Massar/guardian contact list for one authorized track."""
+    require_role(user, "admin", "coordinator")
+    selected = next((t for t in visible_tracks(db, user) if t.id == track_id), None)
+    if selected is None:
+        raise HTTPException(403, "هذا المسلك غير متاح لحسابك.")
+    center = db.get(Center, selected.center_id)
+    year = db.get(Year, selected.year_id)
+    records = db.execute(
+        select(Enrollment.id, Learner.full_name, Learner.source_code,
+               Learner.guardian_phone)
+        .join(Learner, Learner.id == Enrollment.learner_id)
+        .where(Enrollment.track_id == selected.id,
+               Enrollment.center_id == selected.center_id,
+               Enrollment.year_id == selected.year_id)
+        .order_by(Learner.full_name, Enrollment.id)
+    ).all()
+    rows = "".join(
+        '<tr>'
+        f'<td class="index">{i}</td>'
+        f'<td>{e(name)}</td>'
+        f'<td dir="ltr">{e(code) if code else "—"}</td>'
+        f'<td dir="ltr">{e(phone) if phone else "—"}</td>'
+        '</tr>'
+        for i, (_id, name, code, phone) in enumerate(records, 1)
+    ) or '<tr><td colspan="4" class="empty">لا يوجد مستفيدون في هذا المسلك.</td></tr>'
+    html = f'''<!doctype html><html lang="ar" dir="rtl"><head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>لائحة المستفيدين ورموز مسار وهواتف أولياء الأمور</title>
+    <style>
+    @page{{size:A4 portrait;margin:13mm}}
+    *{{box-sizing:border-box}}
+    body{{margin:0;direction:rtl;font-family:Tahoma,Arial,sans-serif;color:#18364b;background:#e8edf2;line-height:1.6}}
+    .toolbar{{max-width:210mm;margin:16px auto;display:flex;align-items:center;gap:12px;justify-content:space-between;
+      background:#133c54;color:#fff;border-radius:10px;padding:12px 18px}}
+    .toolbar button{{background:#187d72;color:#fff;border:0;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer}}
+    .toolbar a{{color:#d4f7ff}}
+    .paper{{width:210mm;min-height:270mm;margin:16px auto;background:#fff;padding:13mm 12mm;
+      box-shadow:0 5px 22px #12334824}}
+    header{{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1b8075;padding-bottom:12px}}
+    header img{{height:65px;width:65px;object-fit:contain}}
+    h1{{font-size:19px;margin:0;color:#164d61}}
+    header p{{font-size:12px;margin:4px 0 0;color:#4e6b7d}}
+    h2{{text-align:center;font-size:17px;margin:20px 0 12px;color:#174b5d}}
+    .meta{{font-size:12px;border:1px solid #d1dfe6;background:#f2f7f8;padding:10px 14px;margin-bottom:15px}}
+    .meta strong{{color:#194a5b}}
+    table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px}}
+    th,td{{border:1px solid #b9ccd7;padding:8px 10px;overflow-wrap:anywhere;text-align:right;vertical-align:middle}}
+    th{{background:#e6f1f2;color:#174b58;font-weight:800}}
+    th.index,td.index{{width:9%;text-align:center}}
+    th.name{{width:39%}}
+    th.code{{width:25%}}
+    th.phone{{width:27%}}
+    td[dir="ltr"]{{text-align:center;unicode-bidi:isolate}}
+    tbody tr:nth-child(even){{background:#f7fafb}}
+    thead{{display:table-header-group}}
+    tr{{break-inside:avoid;page-break-inside:avoid}}
+    .empty{{text-align:center;color:#647c89}}
+    .footnote{{margin-top:15px;font-size:10px;color:#596f7a}}
+    @media print{{
+      body{{background:#fff}}
+      .toolbar{{display:none!important}}
+      .paper{{box-shadow:none;margin:0;padding:0;width:auto;min-height:0}}
+      th{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    }}
+    </style></head><body>
+    <div class="toolbar"><a href="/platform/learners?track_id={selected.id}">العودة للائحة المستفيدين</a>
+    <button type="button" onclick="window.print()">طباعة / حفظ PDF</button></div>
+    <main class="paper">
+    <header><img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل">
+    <div><h1>جمعية نور الأمل</h1><p>برنامج الفرصة الثانية – الجيل الجديد</p></div></header>
+    <h2>لائحة المستفيدين ورموز مسار وهواتف أولياء الأمور</h2>
+    <div class="meta">المركز: <strong>{e(center.name)}</strong> ·
+    المسلك: <strong>{e(selected.name)}</strong> ·
+    السنة التكوينية: <strong>{e(year.label)}</strong> ·
+    العدد: <strong>{len(records)}</strong></div>
+    <table aria-label="لائحة المستفيدين وأرقام هواتف أولياء الأمور">
+    <thead><tr><th class="index">رقم</th><th class="name">اسم المستفيد(ة)</th>
+    <th class="code">رمز مسار</th><th class="phone">هاتف ولي الأمر</th></tr></thead>
+    <tbody>{rows}</tbody></table>
+    <p class="footnote">وثيقة إدارية داخلية تحتوي على بيانات شخصية؛ يُرجى حفظها وتداولها بشكل آمن.
+    الرمز أو الرقم غير المتوفر يظهر بعلامة —.</p>
+    </main></body></html>'''
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store"})
+
+
 @app.get("/platform/learners", response_class=HTMLResponse)
 def learners_page(request: Request, track_id: int | None = None,
                   db: Session = Depends(get_db), user=Depends(actor)):
@@ -1504,6 +1594,32 @@ def learners_page(request: Request, track_id: int | None = None,
              + '<div id="learners-roster-table">'
              + table(["الاسم الكامل", "الرمز الأصلي", "الحالة", "الإجراءات"], rows, cards=True)
              + '</div></section>')
+    if user["role"] in ("admin", "coordinator"):
+        # Guardian phone numbers are private; never include them in instructor
+        # or educator rosters. The printable view performs its own scope check.
+        contact_rows = []
+        for position, en in enumerate(
+            sorted(enrolls, key=lambda en: (learners_by_id[en.learner_id].full_name, en.id)), 1
+        ):
+            learner = learners_by_id[en.learner_id]
+            contact_rows.append([
+                e(position),
+                f'<a href="/platform/learners/{en.id}">{e(learner.full_name)}</a>',
+                e(learner.source_code) if learner.source_code else "—",
+                e(learner.guardian_phone) if learner.guardian_phone else "—",
+            ])
+        body += (
+            '<section class="pv2-roster-list"><h2>لائحة رموز مسار وهواتف أولياء الأمور</h2>'
+            '<p class="subtle">لائحة إدارية خاصة بهذا المركز والمسلك. '
+            'يمكن استكمال رمز مسار أو هاتف ولي الأمر عبر تعديل ملف المستفيد.</p>'
+            f'<p><a class="button" href="/platform/learners/contacts/print?track_id={selected.id}">'
+            'طباعة اللائحة / حفظ PDF</a></p>'
+            + report_filter_box("learners-contacts-table", "بحث باسم المستفيد أو رمز مسار أو الهاتف")
+            + '<div id="learners-contacts-table">'
+            + table(["رقم", "اسم المستفيد", "رمز مسار", "هاتف ولي الأمر"],
+                    contact_rows)
+            + '</div></section>'
+        )
     if user["role"] in ("admin", "coordinator") and not year.archived:
         csrf = request.session["csrf"]
         registration_fields = (
