@@ -68,6 +68,14 @@ gap:7px;align-items:center;font-size:11px;padding:7px 0;border-bottom:1px solid 
 .skill-print-bg{background:#e8eef1;margin:0}
 .skill-print-toolbar{max-width:210mm;margin:10px auto}
 .skill-comment{font-size:11px;padding:6px 0;border-bottom:1px solid #e7eded;overflow-wrap:anywhere}
+@media(max-width:600px){
+.skill-head h1{font-size:17px}
+.skill-head img{height:48px;width:48px}
+.skill-bar-row{grid-template-columns:minmax(95px,30%) repeat(3,minmax(0,1fr));gap:4px}
+.skill-bar-row strong{font-size:10px;overflow-wrap:anywhere}
+.skill-sheet table{font-size:10px}
+.skill-sheet td,.skill-sheet th{padding:5px}
+}
 @media print{
  .skill-print-bg{background:white}
  .skill-actions{display:none!important}

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app import app, get_db
 from platform_v2 import (actor, assert_csrf, center_allowed, coordinator, e, form,
                         page, require_role, table, log)
-from platform_v2_models import Attachment, AttachmentBlob, SessionReport, SessionDay, Slot
+from platform_v2_models import Attachment, AttachmentBlob, SessionReport, SessionDay, Slot, Track
 
 MAX_IMAGE=5*1024*1024
 MAX_DOC=20*1024*1024
@@ -35,7 +35,10 @@ def report_access(db:Session,user,report_id:int):
     slot=db.get(Slot,session.slot_id)
     if user["role"]=="admin" or (user["role"]=="coordinator" and center_allowed(user,slot.center_id)):
         return report,slot
-    if user["id"]==report.author_id and user["id"]==slot.staff_id:
+    if (user["role"] in ("instructor", "educator")
+            and user["id"]==report.author_id and user["id"]==slot.staff_id
+            and any(a.center_id==slot.center_id and a.track_id==slot.track_id
+                    for a in user["assignments"])):
         return report,slot
     raise HTTPException(403,"مرفقات التقرير خارج نطاق صلاحياتك")
 
@@ -134,10 +137,16 @@ def download_attachment(attachment_id:int,db:Session=Depends(get_db),user=Depend
 @app.get("/platform/attachments/{attachment_id}/view")
 def view_selected_image(attachment_id:int,db:Session=Depends(get_db),user=Depends(actor)):
     item,report,slot=attachment_access(db,user,attachment_id)
-    if not item.select_for_summary or not item.content_type.startswith("image/"):
-        raise HTTPException(403,"هذه الصورة لم يخترها المنسق")
+    session=db.get(SessionDay,report.session_id)
+    track=db.get(Track,slot.track_id)
+    if (not item.select_for_summary or item.content_type not in ("image/png","image/jpeg")
+        or report.status!="approved" or session.status=="canceled"
+        or slot.canceled or not track
+        or track.center_id!=slot.center_id or track.year_id!=slot.year_id):
+        raise HTTPException(403,"الصورة غير معتمدة للعرض")
     return Response(content=load_attachment(db,item),media_type=item.content_type,
-        headers={"Cache-Control":"no-store","Content-Security-Policy":"default-src 'none'; sandbox"})
+        headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff",
+                 "Content-Security-Policy":"default-src 'none'; sandbox"})
 
 
 @app.post("/platform/attachments/{attachment_id}/delete")

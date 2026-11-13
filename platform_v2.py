@@ -230,11 +230,11 @@ def page(request, user, title, body):
             "/platform/years", "/platform/learners", "/platform/schedule",
             "/platform/schedule/print",
             "/platform/staff", "/platform/profile-completeness",
-            "/platform/schedule/proposals",
+            "/platform/schedule/proposals", "/platform/integration",
         }),
         ("الحضور والتقارير", {
-            "/platform/reports", "/platform/aggregates",
-            "/platform/attendance/stats", "/platform/attendance/corrections",
+            "/platform/reports", "/platform/aggregates", "/platform/annual-report",
+            "/platform/activity-album", "/platform/attendance/stats", "/platform/attendance/corrections",
             "/platform/grades", "/platform/exports/grades",
         }),
         ("الإدارة والخدمات", {
