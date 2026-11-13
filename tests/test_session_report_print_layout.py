@@ -30,10 +30,12 @@ def test_official_report_keeps_proof_and_tables(client):
     html = post(client, "/platform/reports/1/print", coord).text
     assert '<table class="report-metadata"' in html
     assert html.count('<table class="report-content-table">') == 5
-    assert 'إثبات المصادقة الإلكترونية' in html
+    assert 'إثبات المصادقة الإلكترونية' not in html
+    assert 'class="session-report-qr"' in html
+    assert 'تقرير حصة معتمد إلكترونيًا' not in html
     assert 'رمز تحقق إلكتروني' in html
     assert '/static/noor_official_logo.webp' in html
-    assert 'توقيع منسق المركز' in html
-    assert 'ختم الجمعية' in html
+    assert 'توقيع منسق المركز' not in html
+    assert 'ختم الجمعية' not in html
     assert '@page { size: A4 portrait; margin: 12mm; }' in html
     assert proof_count() == 1

@@ -23,9 +23,12 @@ def test_approved_session_report_print_has_official_logo_and_qr(client):
     assert post(client,"/platform/reports/1/review",coord,decision="approved").status_code==303
     official=post(client,"/platform/reports/1/print",coord)
     assert official.status_code==200,official.text[:350]
-    assert "إثبات المصادقة الإلكترونية" in official.text
-    assert "منسق لعيايدة" in official.text
-    assert "ختم الجمعية" in official.text
+    assert "إثبات المصادقة الإلكترونية" not in official.text
+    assert 'class="session-report-qr"' in official.text
+    assert "تقرير حصة معتمد إلكترونيًا" not in official.text
+    assert "منسق لعيايدة" not in official.text
+    assert "ختم الجمعية" not in official.text
+    assert "توقيع منسق المركز" not in official.text
     assert "/static/noor_official_logo.webp" in official.text
     token=re.search(r'/verify/([A-Za-z0-9_-]{30,})',official.text).group(1)
     checked=client.get(f"/verify/{token}")

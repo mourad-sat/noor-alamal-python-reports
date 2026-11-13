@@ -233,7 +233,6 @@ def print_approved_session_report(report_id:int,request:Request,
     ]
     sections = report_content_tables(fields)
     metadata = report_metadata_table(year, track, slot, session, instructor, present, absent)
-    issued=report.reviewed_at.strftime("%Y-%m-%d %H:%M UTC")
     html=f'''<!doctype html><html dir="rtl" lang="ar"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>التقرير الرسمي للحصة رقم {report.id}</title>
@@ -251,9 +250,12 @@ def print_approved_session_report(report_id:int,request:Request,
       p{{white-space:pre-wrap;overflow-wrap:anywhere}}
       .meta{{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin:18px 0}}
       .meta div{{border-bottom:1px solid #e0e8ef;padding:5px}}
-      section{{margin-top:17px;break-inside:avoid}}.approval{{margin-top:28px;border:1px solid #b7d9c2;
-        padding:12px;break-inside:avoid}}.qr svg{{width:94px;height:94px}}
-      footer{{margin-top:40px;display:flex;justify-content:space-between;gap:10px;break-inside:avoid}}
+      section{{margin-top:17px;break-inside:avoid}}
+      .session-report-qr{{margin:20px auto 0;text-align:center;break-inside:avoid;page-break-inside:avoid}}
+      .session-report-qr .qr{{display:inline-block;max-width:100%;text-align:center}}
+      .session-report-qr .qr svg{{width:104px;height:104px;display:block;margin:0 auto 6px}}
+      .session-report-qr small{{display:block;font-size:10px;color:#36566a;line-height:1.6}}
+      .session-report-qr a{{color:#205d7d;overflow-wrap:anywhere}}
       @media print{{@page{{size:A4;margin:0}}body{{background:white}}.toolbar{{display:none}}
         .sheet{{margin:0;max-width:none;min-height:297mm;box-shadow:none}}}}
     {PRINT_LAYOUT_CSS}</style></head><body>
@@ -261,17 +263,11 @@ def print_approved_session_report(report_id:int,request:Request,
     <article class="sheet"><header><div><h1>جمعية نور الأمل</h1>
       <div>برنامج الفرصة الثانية – الجيل الجديد</div><div>{e(center.name)}</div></div>
       <img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل"></header>
-    <h2>تقرير حصة معتمد إلكترونيًا · رقم {report.id}</h2>
     {metadata}
     <div class="report-title"><strong>عنوان الحصة:</strong> {e(report.subject)}</div>
     {sections}
-    <div class="approval"><strong>إثبات المصادقة الإلكترونية</strong>
-      <div>المصادق: <b>{e(report.reviewed_by)}</b></div>
-      <div>وقت المصادقة: <b>{e(issued)}</b></div>
-      <div>حالة التقرير: معتمد ومقفل ضد التعديل العادي</div></div>
-    <footer><div>توقيع منسق المركز:<p>..................................</p></div>
-      <div>ختم الجمعية:<p>..................................</p></div>
-      <div class="qr">{code}<div><small>رمز تحقق إلكتروني</small></div>
-        <small><a href="{e(verify_url)}">التحقق من سجل الاعتماد</a></small></div>
-    </footer></article></body></html>'''
+    <div class="session-report-qr" aria-label="التحقق الإلكتروني من التقرير">
+      <div class="qr">{code}<div><small>رمز تحقق إلكتروني — امسحه للتحقق من التقرير</small></div>
+        <small><a href="{e(verify_url)}">رابط التحقق الإلكتروني</a></small></div>
+    </div></article></body></html>'''
     return HTMLResponse(html)

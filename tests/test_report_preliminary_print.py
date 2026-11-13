@@ -83,8 +83,9 @@ def test_submitted_report_remains_preliminary_until_coordinator_approves(client)
     before = proof_count()
     official = post(client, "/platform/reports/1/print", coordinator)
     assert official.status_code == 200
-    assert "تقرير حصة معتمد إلكترونيًا" in official.text
-    assert "إثبات المصادقة الإلكترونية" in official.text
+    assert "تقرير حصة معتمد إلكترونيًا" not in official.text
+    assert "إثبات المصادقة الإلكترونية" not in official.text
+    assert 'class="session-report-qr"' in official.text
     assert "رمز تحقق إلكتروني" in official.text
     assert proof_count() == before + 1
 
