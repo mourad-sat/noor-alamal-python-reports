@@ -92,15 +92,19 @@ def test_coordinators_only_see_their_own_center_absentees(client):
     assert "أسماء الغائبين في المركز" in first
     assert "غائب لعيايدة" in first
     assert "غائب بطانة" not in first
+    assert 'action="/platform/learners/1/permit"' in first
+    assert 'action="/platform/learners/2/permit"' not in first
     csrf = __import__("test_platform_v2").csrf_of(client)
     signout(client, csrf)
     signin(client, "coord2", PASSWORD)
     second = section(client.get("/platform").text)
     assert "غائب بطانة" in second
     assert "غائب لعيايدة" not in second
+    assert 'action="/platform/learners/2/permit"' in second
+    assert 'action="/platform/learners/1/permit"' not in second
 
 
-def test_admin_sees_distinct_center_totals_not_unnecessary_names(client):
+def test_admin_sees_center_totals_and_absentees_in_actionable_table(client):
     token, _ = attendance_fixture(client)
     signout(client, token)
     signin(client, "admin", "correct-password")
@@ -109,8 +113,15 @@ def test_admin_sees_distinct_center_totals_not_unnecessary_names(client):
     assert CENTERS[0] in body and CENTERS[1] in body
     assert body.count('class="pv2-absence-count">1</span>') == 2
     assert body.count("1 مستفيد مختلف") == 2
-    assert "غائب لعيايدة" not in body
-    assert "غائب بطانة" not in body
+    assert "غائب لعيايدة" in body
+    assert "غائب بطانة" in body
+    assert "جدول الغائبين حسب المركز" in body
+    assert "اسم المستفيد" in body
+    assert "المسلك" in body
+    assert "حصة الغياب" in body
+    assert "تاريخ الغياب" in body
+    assert 'action="/platform/learners/1/permit"' in body
+    assert 'action="/platform/learners/2/permit"' in body
     assert "العدد يمثل حالات الغياب" in body
 
 
