@@ -102,7 +102,7 @@ def test_annual_report_admin_sees_both_centers_with_correct_approved_only_counts
     page = client.get("/platform/annual-report?year_id=1")
     assert page.status_code == 200, page.text[:500]
     for label in (
-        "التقرير السنوي الشامل", "حصيلة المركز", "تطور الكفايات",
+        "التقرير السنوي الشامل", "الحصيلة حسب المركز", "تطور الكفايات",
         "الإدماج بعد التكوين", "صور توثيقية مختارة",
         "المستفيدون المسجلون", "نشاط معتمد مركز 1",
         "نشاط معتمد مركز 2", "توثيق-1-معتمد.png", "توثيق-2-معتمد.png",
