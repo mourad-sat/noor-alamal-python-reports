@@ -133,3 +133,24 @@ def test_template_has_portrait_double_border_and_print_controls(client):
     assert "size:A4 portrait" in css
     assert "border:6px double #111" in css
     assert ".print-period-1" in css and ".print-period-2" in css
+
+
+def test_polished_print_has_branding_legend_and_flexible_a4_rows(client):
+    prep_two_centers(client)
+    result = client.get("/platform/schedule/print?mode=center&center_id=1")
+    assert result.status_code == 200
+    paper = printed(result.text)
+    assert '<header class="print-brand"' in paper
+    assert '/static/noor_official_logo.webp' in paper
+    assert '<div class="print-heading">' in paper
+    assert '<div class="print-legend">' in paper
+    assert 'حصص مسجلة' in paper
+    assert '2026/27' in paper
+    assert '08:30–10:30' in paper
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1] / "static/timetable_print.css").read_text()
+    assert '@page{size:A4 portrait;margin:0}' in css
+    assert '.print-week thead{display:table-header-group}' in css
+    assert 'min-height:42mm' in css
+    assert 'height:100mm' not in css
+    assert 'page-break-inside:avoid' in css
