@@ -69,11 +69,14 @@ def test_selected_image_preview_is_revoked_on_canceled_session_or_slot(client):
         db.get(SessionDay, 1).status = "canceled"
         db.commit()
     assert client.get("/platform/attachments/1/view").status_code == 403
+    assert client.get("/platform/activity-album").status_code == 200
+    assert "نشاط معتمد.png" not in client.get("/platform/activity-album").text
     with Session(engine) as db:
         db.get(SessionDay, 1).status = "held"
         db.get(Slot, 1).canceled = True
         db.commit()
     assert client.get("/platform/attachments/1/view").status_code == 403
+    assert "نشاط معتمد.png" not in client.get("/platform/activity-album").text
 
 
 def test_private_pages_roles_login_and_nav_visibility(client):
