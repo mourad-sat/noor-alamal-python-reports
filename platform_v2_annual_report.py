@@ -63,6 +63,17 @@ border:0;padding:9px 14px;border-radius:8px;text-decoration:none;cursor:pointer}
 .annual-paper{background:white;max-width:210mm;margin:15px auto;padding:13mm 11mm;box-shadow:0 4px 23px #12384d25}
 .annual-print-bg{background:#e9f1f3;margin:0}
 .annual-footer{border-top:1px solid #c5dce0;margin-top:22px;padding-top:10px;font-size:11px;color:#526e7b}
+@media(max-width:620px){
+.annual-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.annual-bar-row{grid-template-columns:minmax(85px,32%) 1fr 38px;gap:6px}
+.annual-gallery{grid-template-columns:minmax(0,1fr)}
+.annual-head h1{font-size:19px}
+.annual-head img{width:52px;height:52px}
+.annual-section{overflow-wrap:anywhere}
+.annual-section .annual-table{font-size:9px}
+.annual-section .annual-table th,.annual-section .annual-table td{padding:4px}
+}
+@media(max-width:370px){.annual-kpis{grid-template-columns:minmax(0,1fr)}}
 @media print{
  body.annual-print-bg{background:white}
  .annual-actions,.annual-no-print{display:none!important}
