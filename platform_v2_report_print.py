@@ -18,6 +18,95 @@ from platform_v2_models import (
     Slot, Staff, Track, Year,
 )
 
+
+def report_metadata_table(year, track, slot, session, instructor, present: int, absent: int) -> str:
+    """Compact, readable two-column data table for A4 printing."""
+    entries = (
+        ("السنة التكوينية", year.label, "المركز / المسلك", track.name),
+        ("المادة", slot.subject, "تاريخ الحصة", session.held_on),
+        ("المؤطر(ة)", instructor.full_name, "التوقيت", f"{slot.starts_at}–{slot.ends_at}"),
+        ("الحاضرون", present, "الغائبون", absent),
+    )
+    rows = "".join(
+        f'<tr><th scope="row">{e(a)}</th><td>{e(b)}</td>'
+        f'<th scope="row">{e(c)}</th><td>{e(d)}</td></tr>'
+        for a, b, c, d in entries
+    )
+    return (
+        '<table class="report-metadata" aria-label="بيانات الحصة">'
+        '<colgroup><col class="meta-label"><col class="meta-value">'
+        '<col class="meta-label"><col class="meta-value"></colgroup>'
+        '<tbody>' + rows + '</tbody></table>'
+    )
+
+
+def report_content_tables(fields) -> str:
+    """Separate bordered tables allow long Arabic text to flow onto later pages."""
+    blocks = []
+    for index, (label, body) in enumerate(fields, 1):
+        value = e(body) if body else "لا توجد ملاحظات"
+        blocks.append(
+            '<table class="report-content-table">'
+            '<thead><tr><th scope="col">'
+            f'<span class="section-index">{index:02d}</span> {e(label)}'
+            '</th></tr></thead>'
+            f'<tbody><tr><td><div class="report-text">{value}</div></td></tr></tbody>'
+            '</table>'
+        )
+    return '<div class="report-content" aria-label="محتوى التقرير">' + "".join(blocks) + '</div>'
+
+
+PRINT_LAYOUT_CSS = """
+@page { size: A4 portrait; margin: 12mm; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: Tahoma, Arial, sans-serif; line-height: 1.65; }
+.sheet { width: 100%; max-width: 210mm; min-height: 0; padding: 13mm 13mm;
+         border-radius: 4px; }
+.sheet header { gap: 14px; }
+.sheet header img { width: 76px; height: 72px; flex-shrink: 0; }
+.sheet h1 { font-size: 22px; }
+.sheet h2 { margin: 20px 0 12px; line-height: 1.55; font-size: 18px; }
+.report-title { font-size: 15px; line-height: 1.65; padding: 11px 13px;
+                border: 1px solid #cbd8e2; background: #f6f9fb;
+                margin: 16px 0; overflow-wrap: anywhere; }
+.report-title strong { color: #254d69; }
+.report-metadata, .report-content-table { width: 100%; border-collapse: collapse;
+  table-layout: fixed; direction: rtl; font-size: 12px; }
+.report-metadata { margin: 14px 0 18px; }
+.report-metadata .meta-label { width: 18%; }
+.report-metadata .meta-value { width: 32%; }
+.report-metadata th, .report-metadata td { border: 1px solid #c9d5e0;
+  padding: 8px 9px; text-align: right; vertical-align: top; overflow-wrap: anywhere; }
+.report-metadata th { background: #edf3f7; font-weight: 700; color: #24475f; }
+.report-metadata td { color: #193145; }
+.report-content-table { margin: 13px 0; page-break-inside: auto; break-inside: auto; }
+.report-content-table thead { display: table-header-group; }
+.report-content-table th { background: #eaf1f6; color: #234c68; border: 1px solid #bfcfdc;
+  text-align: right; padding: 8px 12px; font-size: 13px; }
+.report-content-table td { border: 1px solid #bfcfdc; padding: 11px 13px;
+  vertical-align: top; }
+.report-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal;
+  line-height: 1.85; font-size: 12.5px; text-align: right; min-height: 17px; }
+.section-index { display: inline-block; margin-left: 9px; font-size: 11px; }
+.approval { margin-top: 18px; }
+.notice { margin-top: 20px; }
+footer { margin-top: 22px; align-items: flex-start; }
+.qr { text-align: center; }
+.qr a { font-size: 10px; overflow-wrap: anywhere; }
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  body { background: #fff; }
+  .toolbar { display: none !important; }
+  .sheet { max-width: none; width: auto; margin: 0; padding: 0; min-height: 0;
+           box-shadow: none; border: 0; }
+  .report-content-table, .report-metadata { print-color-adjust: exact;
+           -webkit-print-color-adjust: exact; }
+  .report-content-table tr { break-inside: auto; page-break-inside: auto; }
+  .report-content-table thead tr { break-inside: avoid; }
+  .report-metadata tr, .sheet header { break-inside: avoid; page-break-inside: avoid; }
+}
+"""
+
 @app.get("/platform/reports/{report_id}/print-draft", response_class=HTMLResponse)
 def print_preliminary_session_report(report_id: int, request: Request,
                                      db: Session = Depends(get_db),
@@ -46,11 +135,8 @@ def print_preliminary_session_report(report_id: int, request: Request,
         ("الصعوبات والملاحظات", report.challenges),
         ("التوصيات والإجراءات", report.recommendations),
     )
-    sections = "".join(
-        '<section><h3>' + e(label) + '</h3>'
-        '<p>' + (e(body) if body else "لا توجد ملاحظات") + '</p></section>'
-        for label, body in fields
-    )
+    sections = report_content_tables(fields)
+    metadata = report_metadata_table(year, track, slot, session, instructor, present, absent)
     label = {
         "draft": "مسودة قيد الإعداد",
         "submitted": "مرسل للمراجعة",
@@ -89,7 +175,7 @@ def print_preliminary_session_report(report_id: int, request: Request,
       @media print{{@page{{size:A4;margin:0}}body{{background:#fff}}
         .toolbar{{display:none}}.sheet{{margin:0;max-width:none;min-height:297mm;box-shadow:none}}
         .warning{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}}}
-    </style></head><body>
+    {PRINT_LAYOUT_CSS}</style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">طباعة النسخة الأولية / حفظ PDF</button></div>
     <article class="sheet"><header><div><h1>جمعية نور الأمل</h1>
       <div>برنامج الفرصة الثانية – الجيل الجديد</div>
@@ -98,15 +184,8 @@ def print_preliminary_session_report(report_id: int, request: Request,
     <div class="warning" role="note">نسخة أولية غير معتمدة — ليست وثيقة رسمية</div>
     <h2>تقرير حصة أولي · رقم {report.id}</h2>
     <p class="status">الحالة: {e(label)}</p>
-    <div class="meta"><div>السنة: <b>{e(year.label)}</b></div>
-      <div>المسلك: <b>{e(track.name)}</b></div>
-      <div>المادة: <b>{e(slot.subject)}</b></div>
-      <div>تاريخ الحصة: <b>{e(session.held_on)}</b></div>
-      <div>المؤطر: <b>{e(instructor.full_name)}</b></div>
-      <div>الساعة: <b>{e(slot.starts_at)}–{e(slot.ends_at)}</b></div>
-      <div>عدد الحاضرين: <b>{present}</b></div>
-      <div>عدد الغائبين: <b>{absent}</b></div></div>
-    <h3>عنوان الحصة: {e(report.subject)}</h3>
+    {metadata}
+    <div class="report-title"><strong>عنوان الحصة:</strong> {e(report.subject)}</div>
     {sections}{comment}
     <div class="notice">هذه النسخة للاطلاع أو المراجعة فقط. لا تثبت المصادقة الإلكترونية،
     ولا تحتوي على رمز تحقق أو ختم اعتماد. تصدر النسخة الرسمية بعد مصادقة المنسق.</div>
@@ -152,10 +231,8 @@ def print_approved_session_report(report_id:int,request:Request,
         ("الصعوبات والملاحظات",report.challenges),
         ("التوصيات والإجراءات",report.recommendations),
     ]
-    sections="".join(
-        f'<section><h3>{e(label)}</h3><p>{e(body) if body else "لا توجد ملاحظات"}</p></section>'
-        for label,body in fields
-    )
+    sections = report_content_tables(fields)
+    metadata = report_metadata_table(year, track, slot, session, instructor, present, absent)
     issued=report.reviewed_at.strftime("%Y-%m-%d %H:%M UTC")
     html=f'''<!doctype html><html dir="rtl" lang="ar"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -179,21 +256,14 @@ def print_approved_session_report(report_id:int,request:Request,
       footer{{margin-top:40px;display:flex;justify-content:space-between;gap:10px;break-inside:avoid}}
       @media print{{@page{{size:A4;margin:0}}body{{background:white}}.toolbar{{display:none}}
         .sheet{{margin:0;max-width:none;min-height:297mm;box-shadow:none}}}}
-    </style></head><body>
+    {PRINT_LAYOUT_CSS}</style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">طباعة / حفظ PDF الرسمي</button></div>
     <article class="sheet"><header><div><h1>جمعية نور الأمل</h1>
       <div>برنامج الفرصة الثانية – الجيل الجديد</div><div>{e(center.name)}</div></div>
       <img src="/static/noor_official_logo.webp" alt="شعار جمعية نور الأمل"></header>
     <h2>تقرير حصة معتمد إلكترونيًا · رقم {report.id}</h2>
-    <div class="meta"><div>السنة: <b>{e(year.label)}</b></div>
-      <div>المسلك: <b>{e(track.name)}</b></div>
-      <div>المادة: <b>{e(slot.subject)}</b></div>
-      <div>تاريخ الحصة: <b>{e(session.held_on)}</b></div>
-      <div>المؤطر: <b>{e(instructor.full_name)}</b></div>
-      <div>الساعة: <b>{e(slot.starts_at)}–{e(slot.ends_at)}</b></div>
-      <div>عدد الحاضرين: <b>{present}</b></div>
-      <div>عدد الغائبين: <b>{absent}</b></div></div>
-    <h3>عنوان الحصة: {e(report.subject)}</h3>
+    {metadata}
+    <div class="report-title"><strong>عنوان الحصة:</strong> {e(report.subject)}</div>
     {sections}
     <div class="approval"><strong>إثبات المصادقة الإلكترونية</strong>
       <div>المصادق: <b>{e(report.reviewed_by)}</b></div>
