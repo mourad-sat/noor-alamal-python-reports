@@ -122,7 +122,7 @@ def auth_required(request: Request):
     if not request.session.get('authenticated'):
         raise HTTPException(status_code=303, headers={'Location': '/login'}, detail='Authentication required')
     # The legacy report/absence endpoints are intentionally restricted to admin.
-    if request.session.get('role', 'admin') != 'admin':
+    if request.session.get('role') != 'admin':
         raise HTTPException(status_code=403, detail='This page is restricted to administration')
 
 def logged_in_required(request: Request):
