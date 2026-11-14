@@ -24,22 +24,38 @@ def period_bounds(period:str,anchor:date):
     raise HTTPException(422,"نوع الفترة غير صحيح")
 
 def approved_stats(db:Session,slots:list[Slot],start:date,end:date):
+    # Scope all reads to visible slot IDs and the requested period in SQL.
+    # An approved report is required; a session with multiple matching reports
+    # must still be counted only once.
     ids={s.id for s in slots}
-    reports=db.scalars(select(SessionReport).where(SessionReport.status=="approved")).all()
-    sessions=db.scalars(select(SessionDay).where(SessionDay.held_on>=start,SessionDay.held_on<=end,
-        SessionDay.status!="canceled")).all()
-    selected=[s for s in sessions if s.slot_id in ids and any(r.session_id==s.id for r in reports)]
+    if not ids:
+        return dict(sessions=0, recorded=0, present=0, absent=0,
+                    absent_days=0, missing=0)
+    approved_session_ids = select(SessionReport.session_id).where(
+        SessionReport.status == "approved"
+    )
+    selected=db.scalars(
+        select(SessionDay).where(
+            SessionDay.slot_id.in_(ids),
+            SessionDay.held_on >= start,
+            SessionDay.held_on <= end,
+            SessionDay.status != "canceled",
+            SessionDay.id.in_(approved_session_ids),
+        )
+    ).all()
+    if not selected:
+        return dict(sessions=0, recorded=0, present=0, absent=0,
+                    absent_days=0, missing=0)
     session_ids=[s.id for s in selected]
-    att=db.scalars(select(Attendance).where(Attendance.session_id.in_(session_ids))).all() if selected else []
+    att=db.scalars(select(Attendance).where(Attendance.session_id.in_(session_ids))).all()
     session_dates={s.id:s.held_on for s in selected}
+    recorded_session_ids={a.session_id for a in att}
     absent=[a for a in att if a.status=="absent"]
     present=[a for a in att if a.status in ("present","late")]
-    missing=[s for s in selected if not any(a.session_id==s.id for a in att)]
-    return dict(sessions=len(selected),recorded=len(selected)-len(missing),
+    return dict(sessions=len(selected),recorded=len(recorded_session_ids),
         present=len(present),absent=len(absent),
         absent_days=len({(a.enrollment_id,session_dates[a.session_id]) for a in absent}),
-        missing=len(missing))
-
+        missing=len(selected)-len(recorded_session_ids))
 
 def stats_html(stats):
     """Accessible summary cards with text values (not visual charts alone)."""
