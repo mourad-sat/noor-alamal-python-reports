@@ -3252,9 +3252,20 @@ def transcript(db:Session,en:Enrollment,start:date|None=None,end:date|None=None)
 @app.get("/platform/grades",response_class=HTMLResponse)
 def grades_page(request:Request,db:Session=Depends(get_db),user=Depends(actor)):
     csrf=request.session["csrf"]
-    assessments=[a for a in db.scalars(select(Assessment).order_by(Assessment.held_on.desc()).limit(500)).all()
-                 if any(t.id==a.track_id for t in db.scalars(select(Track)).all() if center_allowed(user,t.center_id))
-                 and (user["role"] in ("admin","coordinator") or a.staff_id==user["id"])]
+    # Fetch track permissions once and apply them before limiting assessments.
+    # This preserves the existing role/center scope without repeated SQL reads.
+    permitted_track_ids = {
+        t.id for t in db.scalars(select(Track)).all()
+        if center_allowed(user, t.center_id)
+    }
+    assessment_query = select(Assessment).where(
+        Assessment.track_id.in_(permitted_track_ids)
+    )
+    if user["role"] not in ("admin", "coordinator"):
+        assessment_query = assessment_query.where(Assessment.staff_id == user["id"])
+    assessments = db.scalars(
+        assessment_query.order_by(Assessment.held_on.desc()).limit(500)
+    ).all() if permitted_track_ids else []
     rows=[]
     for a in assessments:
         t=db.get(Track,a.track_id)
